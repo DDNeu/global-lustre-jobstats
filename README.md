@@ -2,11 +2,12 @@
 glljobstat.py is based on [lljobstat](https://review.whamcloud.com/c/fs/lustre-release/+/48888/28/lustre/utils/lljobstat) with some enhencements!
 
 ## Enhancements:
-* Aggreate stats over multiple OSS/MDS via SSH
+* Aggreate stats over multiple OSS/MDS via SSH in parallel
 * Calculate the rate of each job between queries
+* Process returned strings to yaml objects in parallel (3x faster)
 * Filter for certain job_ids
 * Filter out certain job_ids
-* use yaml CLoader instead of yaml Python Loader to speed up parsing significantly
+* Use yaml CLoader instead of yaml Python Loader to speed up parsing significantly
 * Config file for SSH, OSS/MDS & filter settings
 
 This is still very rudimental! A proper tool would allow filtering for
