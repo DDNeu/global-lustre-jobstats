@@ -17,12 +17,17 @@ import signal
 import urllib3
 import warnings
 import configparser
-from yaml import CLoader as Loader, CDumper as Dumper
 from multiprocessing import Process, Queue, Pool, Manager, active_children, Pipe
 from subprocess import Popen, PIPE, STDOUT
 from pprint import pprint
 from os.path import expanduser
 from pathlib import Path
+
+try:
+    from yaml import CLoader as Loader, CDumper as Dumper
+except ImportError:
+    print("Install libyaml-dev for faster processing using ", file=sys.stderr)
+    from yaml import Loader, Dumper
 
 warnings.filterwarnings(action='ignore',module='.*paramiko.*')
 urllib3.disable_warnings()
