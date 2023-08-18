@@ -307,6 +307,7 @@ class JobStatsParser:
         print top_jobs in YAML
         '''
         print('---') # mark the begining of YAML doc in stream
+        print(f'timestamp: {int(time.time())}')
         print(f'{timedesc}: {timevalue}')
         print("top_jobs:")
         for job in top_jobs:

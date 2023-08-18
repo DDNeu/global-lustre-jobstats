@@ -50,20 +50,20 @@ optional arguments:
 ```
 (lljobstat) [root@n2oss1 bolausson]# ./glljobstat.py -n 2 -c 10 -r
 ---
-sample_duration: 51
+timestamp: 1692372223
+sample_duration: 50
 top_jobs:
-- 4628146@39362@n2cn1144: {ops: 1012, op: 1, cl: 182, mn: 0, mk: 0, ga: 190, sa: 319, gx: 0, rd: 0, wr: 0, pu: 319}
-- 4629707@62567@n2cn0167: {ops: 816, op: 0, cl: 155, mn: 0, mk: 0, ga: 161, sa: 243, gx: 12, rd: 0, wr: 0, pu: 243}
-- 4633306@91469@n2cn0789: {ops: 748, op: 54, cl: 497, mn: 31, ul: 19, mk: 0, mv: 13, ga: 59, sa: 12, gx: 34, rd: 6, wr: 8, pu: 15}
-- 4614092@92097@n2lcn0142: {ops: 657, rd: 643, wr: 14}
-- 4604904@92097@n2cn0357: {ops: 650, op: 73, cl: 243, mn: 21, ul: 22, mk: 0, mv: 9, ga: 84, sa: 38, gx: 31, sx: 0, sy: 7, rd: 13, wr: 15, pu: 94}
-- 4614095@92097@n2lcn0141: {ops: 643, cl: 0, ul: 0, ga: 0, rd: 608, wr: 35}
-- 4614099@92097@n2lcn0141: {ops: 605, cl: 0, ul: 0, ga: 0, rd: 571, wr: 34}
-- 4614098@92097@n2lcn0141: {ops: 600, cl: 0, ul: 0, ga: 0, rd: 566, wr: 34}
-- 4604911@92097@n2cn0358: {ops: 585, op: 67, cl: 222, mn: 21, ul: 20, mk: 0, mv: 9, ga: 79, sa: 36, gx: 31, sx: 0, sy: 7, rd: 9, wr: 11, pu: 73}
-- 4614091@92097@n2lcn0142: {ops: 573, rd: 566, wr: 7}
+- 4614100@92097@n2lcn0141: {ops: 1312, rd: 1303, wr: 9}
+- 4628146@39362@n2cn1144: {ops: 1008, op: 1, cl: 175, mn: 0, mk: 0, ga: 173, sa: 323, gx: 14, rd: 0, wr: 0, pu: 323}
+- 4629707@62567@n2cn0167: {ops: 817, op: 1, cl: 155, mn: 0, mk: 0, ga: 172, sa: 243, gx: 1, rd: 0, wr: 0, pu: 246}
+- 4628147@39362@n2cn1051: {ops: 761, op: 88, cl: 146, mn: 87, mk: 8, ga: 48, sa: 148, gx: 0, rd: 0, wr: 87, pu: 148}
+- 4614091@92097@n2lcn0142: {ops: 724, rd: 710, wr: 14}
+- 4601768@92097@n2cn0826: {ops: 615, op: 72, cl: 238, mn: 22, ul: 18, mk: 0, mv: 10, ga: 81, sa: 39, gx: 32, sx: 0, sy: 7, rd: 9, wr: 13, pu: 75}
+- 4604904@92097@n2cn0357: {ops: 609, op: 70, cl: 235, mn: 20, ul: 21, mk: 0, mv: 9, ga: 81, sa: 38, gx: 29, sx: 0, sy: 7, rd: 9, wr: 14, pu: 74}
+- 4613363@13313@n2gpu1223: {ops: 541, op: 110, cl: 110, mn: 0, ul: 0, mk: 0, ga: 212, sa: 0, gx: 0, rd: 109, wr: 0, pu: 0}
+- 4604912@92097@n2cn0358: {ops: 483, op: 53, cl: 173, mn: 18, ul: 18, mk: 0, mv: 6, ga: 64, sa: 26, gx: 26, sx: 0, sy: 7, rd: 9, wr: 16, pu: 65}
+- 4604911@92097@n2cn0358: {ops: 482, op: 56, cl: 196, mn: 14, ul: 12, mk: 0, mv: 9, ga: 61, sa: 32, gx: 22, sx: 0, sy: 0, rd: 6, wr: 15, pu: 59}
 ...
-(lljobstat) [root@n2oss1 bolausson]#
 ```
 ### Run once, show top 10 jobs:
 ```
