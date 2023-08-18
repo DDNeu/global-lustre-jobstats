@@ -137,8 +137,7 @@ class ArgParser: # pylint: disable=too-few-public-methods
         RATE = self.args.rate
         
         if RATE and (self.args.repeats > 0 and self.args.repeats < 2):
-            print(f'Increasing self.args.rate from {self.args.rate} to 2')
-            self.args.rate = 2
+            self.args.repeats = 2
 
 
 class JobStatsParser:
@@ -213,11 +212,11 @@ class JobStatsParser:
 
         return jobrate, duration
 
-    def parse_single_job_stats(self, data): # pylint: disable=no-self-use
+    def parse_single_job_stats(self, queue, data): # pylint: disable=no-self-use
         '''
         read single job_stats file, parse it and return an object
         '''
-        output = data.replace('job_id:          @', f'job_id:          .')
+        output = data[0].replace('job_id:          @', f'job_id:          .')
 
         try:
             yaml_obj = yaml.load(output, Loader=Loader)  # need several seconds...
@@ -227,7 +226,7 @@ class JobStatsParser:
             print("failed to parse the content of %s" % param, file=sys.stdout)
             raise
 
-        return yaml_obj
+        queue.put(yaml_obj)
 
     def merge_job(self, jobs, job):
         '''
@@ -355,6 +354,7 @@ class JobStatsParser:
         global RATE
         global REFERENCE
         global REFERENCE_TIME
+        jobs = {}
 
         QUERY_TIME = int(time.time())
         STATSDATA = self.GetData(HOSTS, STATSPARAM, SSHUSER, SSHKEY, SSHKEYTYPE, TYPE, HOSTPARAM)
@@ -365,7 +365,7 @@ class JobStatsParser:
         
         try:
             for data in STATSDATA:
-                p = Process(target=self.parse_single_job_stats, args=([data]))
+                p = Process(target=self.parse_single_job_stats, args=(Q, [data]))
                 procs.append(p)
                 p.start()
             for p in procs:
@@ -377,8 +377,6 @@ class JobStatsParser:
             print(e)
             sys.exit()
 
-        jobs = {}
-        print("merging jobs")
         for obj in objs:
             if obj['job_stats'] is None:
                 continue
@@ -404,8 +402,8 @@ class JobStatsParser:
         '''
         for i in range(2, -1, -1):  # 2, 1, 0
             try:
-                #return self.run_once_par(HOSTS, STATSPARAM, SSHUSER, SSHKEY, SSHKEYTYPE, TYPE, HOSTPARAM)
-                return self.run_once_ser(HOSTS, STATSPARAM, SSHUSER, SSHKEY, SSHKEYTYPE, TYPE, HOSTPARAM)
+                return self.run_once_par(HOSTS, STATSPARAM, SSHUSER, SSHKEY, SSHKEYTYPE, TYPE, HOSTPARAM)
+                #return self.run_once_ser(HOSTS, STATSPARAM, SSHUSER, SSHKEY, SSHKEYTYPE, TYPE, HOSTPARAM)
             except Exception as e: # pylint: disable=bare-except
                 if i == 0:
                     raise
