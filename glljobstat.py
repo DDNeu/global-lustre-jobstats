@@ -1,10 +1,8 @@
 #!/bin/env python3
-# -*- coding: utf-8 -*-
-#
-#
 
 '''
-glljobstat reads job_stats file(s) from multiple servers, parses and aggregate the data to list the top jobs
+lljobstat command. Read job_stats files, parse and aggregate data of every
+job on multiple OSS/MDS, show top jobs
 '''
 
 import argparse
@@ -13,10 +11,12 @@ import subprocess
 import sys
 import time
 import yaml
+#import zaml
 import signal
 import urllib3
 import warnings
 import configparser
+from yaml import CLoader as Loader, CDumper as Dumper
 from multiprocessing import Process, Queue, Pool, Manager, active_children, Pipe
 from subprocess import Popen, PIPE, STDOUT
 from pprint import pprint
@@ -38,6 +38,9 @@ signal.signal(signal.SIGINT, signal.default_int_handler)
 
 FILTER = ""
 FMOD = False
+RATE = False
+REFERENCE = {}
+REFERENCE_TIME = ""
 
 class ArgParser: # pylint: disable=too-few-public-methods
     '''
@@ -66,6 +69,8 @@ class ArgParser: # pylint: disable=too-few-public-methods
         parser.add_argument('-o', '--ost', dest='param', action='store_const',
                             const='obdfilter.*.job_stats',
                             help='check only OST job stats.')
+        parser.add_argument('-os', '--oss', dest='osservers', type=str,
+                            help='Comma separated list of OSS to query')
         parser.add_argument('-m', '--mdt', dest='param', action='store_const',
                             const='mdt.*.job_stats',
                             help='check only MDT job stats.')
@@ -80,6 +85,8 @@ class ArgParser: # pylint: disable=too-few-public-methods
                             help='Comma separated list of job_ids to ignore')
         parser.add_argument('-fm', '--fmod', dest='fmod', action='store_true',
                             help='Modify the filter to only show job_ids that match the filter instead of removing them')
+        parser.add_argument('-r', '--rate', dest='rate', action='store_true',
+                            help='Calculate the rate between two queries')
 
         self.args = parser.parse_args()
         self.config = configparser.ConfigParser()
@@ -128,6 +135,14 @@ class ArgParser: # pylint: disable=too-few-public-methods
         
         global HOSTS
         HOSTS = self.serverlist
+        
+        global RATE
+        RATE = self.args.rate
+        
+        if RATE and (self.args.repeats > 0 and self.args.repeats < 2):
+            print(f'Increasing self.args.rate from {self.args.rate} to 2')
+            self.args.rate = 2
+
 
 class JobStatsParser:
     '''
@@ -165,17 +180,40 @@ class JobStatsParser:
     def __init__(self):
         self.args = None
 
-    def list_param(self, param_pattern): # pylint: disable=no-self-use
+    def RateCalc(self, jobs, QUERY_TIME):
         '''
-        list param paths with given param pattern
+        Class to calculate the rate between two queries
         '''
-        cmd = ['lctl', 'list_param', param_pattern]
-        try:
-            output = subprocess.check_output(cmd).decode()
-            return output.splitlines()
-        except subprocess.CalledProcessError as err:
-            if err.returncode == errno.ENOENT:
-                return []
+        global REFERENCE
+        global REFERENCE_TIME
+        
+        jobrate = {}
+        
+        if not REFERENCE:
+            REFERENCE = jobs
+            REFERENCE_TIME = QUERY_TIME
+            duration = QUERY_TIME
+        else:
+            duration = QUERY_TIME - REFERENCE_TIME
+            for job_id in REFERENCE:
+                jobrate[job_id] = {}
+                for metric in REFERENCE[job_id]:
+                    if metric in self.op_keys.values():
+                        old = REFERENCE[job_id][metric]
+                        try:
+                            new = jobs[job_id][metric]
+                        except KeyError:
+                            rate = 0
+                        else:
+                            rate = new - old
+                        jobrate[job_id][metric] = rate
+                    else:
+                        jobrate[job_id][metric] = REFERENCE[job_id][metric]
+
+            REFERENCE = jobs
+            REFERENCE_TIME = QUERY_TIME
+
+        return jobrate, duration
 
     def parse_single_job_stats(self, data): # pylint: disable=no-self-use
         '''
@@ -185,6 +223,7 @@ class JobStatsParser:
 
         try:
             yaml_obj = yaml.load(output, Loader=Loader)  # need several seconds...
+            #yaml_obj = zaml.load(output)
         except yaml.scanner.ScannerError:
             # only print the file name here
             print("failed to parse the content of %s" % param, file=sys.stdout)
@@ -264,12 +303,12 @@ class JobStatsParser:
                 first = False
         print('}')
 
-    def print_top_jobs(self, top_jobs):
+    def print_top_jobs(self, top_jobs, timedesc, timevalue):
         '''
         print top_jobs in YAML
         '''
         print('---') # mark the begining of YAML doc in stream
-        print("timestamp: %d" % int(time.time()))
+        print(f'{timedesc}: {timevalue}')
         print("top_jobs:")
         for job in top_jobs:
             self.print_job(job)
@@ -279,8 +318,12 @@ class JobStatsParser:
         '''
         scan/parse/aggregate/print top jobs in given job_stats pattern/path(s)
         '''
+        global RATE
+        global REFERENCE
+        global REFERENCE_TIME
         jobs = {}
 
+        QUERY_TIME = int(time.time())
         STATSDATA = self.GetData(HOSTS, STATSPARAM, SSHUSER, SSHKEY, SSHKEYTYPE, TYPE, HOSTPARAM)
 
         for data in STATSDATA:
@@ -292,9 +335,16 @@ class JobStatsParser:
                 self.merge_job(jobs, job)
 
         #print("Total jobs: ", len(jobs))
-        top_jobs = self.pick_top_jobs(jobs, self.args.count)
-        self.print_top_jobs(top_jobs)
-
+        if RATE and not REFERENCE:
+            jobs, duration = self.RateCalc(jobs, QUERY_TIME)
+        elif RATE and REFERENCE:
+            jobs, duration = self.RateCalc(jobs, QUERY_TIME)
+            top_jobs = self.pick_top_jobs(jobs, self.args.count)
+            self.print_top_jobs(top_jobs, "sample_duration", duration)
+        else:
+            top_jobs = self.pick_top_jobs(jobs, self.args.count)
+            self.print_top_jobs(top_jobs, "timestamp", QUERY_TIME)
+        
 
     def run_once_par(self, HOSTS, STATSPARAM, SSHUSER, SSHKEY, SSHKEYTYPE, TYPE, HOSTPARAM):
         '''
@@ -341,29 +391,10 @@ class JobStatsParser:
             try:
                 #return self.run_once_par(HOSTS, STATSPARAM, SSHUSER, SSHKEY, SSHKEYTYPE, TYPE, HOSTPARAM)
                 return self.run_once_ser(HOSTS, STATSPARAM, SSHUSER, SSHKEY, SSHKEYTYPE, TYPE, HOSTPARAM)
-            except: # pylint: disable=bare-except
+            except Exception as e: # pylint: disable=bare-except
                 if i == 0:
                     raise
 
-    def run(self):
-        '''
-        run task periodically or for some times with given interval
-        '''
-        argparser = ArgParser()
-        argparser.run()
-        self.args = argparser.args
-
-        i = 0
-        try:
-            while True:
-                self.run_once_retry()
-                i += 1
-                if self.args.repeats != -1 and i >= self.args.repeats:
-                    break
-                time.sleep(self.args.interval)
-        except (KeyboardInterrupt):
-            print("\nReceived KeyboardInterrupt - stopping")
-            sys.exit()
 
     def SSHGet(self, queue, HOST, STATSPARAM, SSHUSER, SSHKEY, SSHKEYTYPE, TYPE, CMD):
         try:
