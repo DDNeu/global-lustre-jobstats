@@ -69,8 +69,6 @@ class ArgParser: # pylint: disable=too-few-public-methods
         parser.add_argument('-o', '--ost', dest='param', action='store_const',
                             const='obdfilter.*.job_stats',
                             help='check only OST job stats.')
-        parser.add_argument('-os', '--oss', dest='osservers', type=str,
-                            help='Comma separated list of OSS to query')
         parser.add_argument('-m', '--mdt', dest='param', action='store_const',
                             const='mdt.*.job_stats',
                             help='check only MDT job stats.')
@@ -205,7 +203,8 @@ class JobStatsParser:
                         except KeyError:
                             rate = 0
                         else:
-                            rate = new - old
+                            difference = new - old
+                            rate = round(difference / duration)
                         jobrate[job_id][metric] = rate
                     else:
                         jobrate[job_id][metric] = REFERENCE[job_id][metric]

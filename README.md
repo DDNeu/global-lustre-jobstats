@@ -3,18 +3,23 @@ glljobstat.py is based on [lljobstat](https://review.whamcloud.com/c/fs/lustre-r
 
 ## Enhancements:
 * Aggreate stats over multiple OSS/MDS via SSH
+* Calculate the rate of each job between queries
 * Filter for certain job_ids
 * Filter out certain job_ids
 * use yaml CLoader instead of yaml Python Loader to speed up parsing significantly
 * Config file for SSH, OSS/MDS & filter settings
+
+This is still very rudimental! A proper tool would allow filtering for
+specific OST/MDTs etc. and would be faster (by either manually parsing the
+jobstats output or by using another lib e.g. zaml instead of yaml)
 
 ## Examples
 ### Help
 ```
 (lljobstat) [root@n2oss1 bolausson]# ./glljobstat.py --help
 usage: lljobstat [-h] [-c COUNT] [-i INTERVAL] [-n REPEATS] [--param PARAM]
-                 [-o] [-os OSSERVERS] [-m] [-s SERVERS] [--fullname]
-                 [--no-fullname] [-f FILTER] [-fm]
+                 [-o] [-m] [-s SERVERS] [--fullname] [--no-fullname]
+                 [-f FILTER] [-fm] [-r]
 
 List top jobs.
 
@@ -38,6 +43,27 @@ optional arguments:
                         Comma separated list of job_ids to ignore
   -fm, --fmod           Modify the filter to only show job_ids that match the
                         filter instead of removing them
+  -r, --rate            Calculate the rate between two queries
+```
+
+### Run twice, calculate rate, show top 10 jobs:
+```
+(lljobstat) [root@n2oss1 bolausson]# ./glljobstat.py -n 2 -c 10 -r
+---
+sample_duration: 51
+top_jobs:
+- 4628146@39362@n2cn1144: {ops: 1012, op: 1, cl: 182, mn: 0, mk: 0, ga: 190, sa: 319, gx: 0, rd: 0, wr: 0, pu: 319}
+- 4629707@62567@n2cn0167: {ops: 816, op: 0, cl: 155, mn: 0, mk: 0, ga: 161, sa: 243, gx: 12, rd: 0, wr: 0, pu: 243}
+- 4633306@91469@n2cn0789: {ops: 748, op: 54, cl: 497, mn: 31, ul: 19, mk: 0, mv: 13, ga: 59, sa: 12, gx: 34, rd: 6, wr: 8, pu: 15}
+- 4614092@92097@n2lcn0142: {ops: 657, rd: 643, wr: 14}
+- 4604904@92097@n2cn0357: {ops: 650, op: 73, cl: 243, mn: 21, ul: 22, mk: 0, mv: 9, ga: 84, sa: 38, gx: 31, sx: 0, sy: 7, rd: 13, wr: 15, pu: 94}
+- 4614095@92097@n2lcn0141: {ops: 643, cl: 0, ul: 0, ga: 0, rd: 608, wr: 35}
+- 4614099@92097@n2lcn0141: {ops: 605, cl: 0, ul: 0, ga: 0, rd: 571, wr: 34}
+- 4614098@92097@n2lcn0141: {ops: 600, cl: 0, ul: 0, ga: 0, rd: 566, wr: 34}
+- 4604911@92097@n2cn0358: {ops: 585, op: 67, cl: 222, mn: 21, ul: 20, mk: 0, mv: 9, ga: 79, sa: 36, gx: 31, sx: 0, sy: 7, rd: 9, wr: 11, pu: 73}
+- 4614091@92097@n2lcn0142: {ops: 573, rd: 566, wr: 7}
+...
+(lljobstat) [root@n2oss1 bolausson]#
 ```
 ### Run once, show top 10 jobs:
 ```
