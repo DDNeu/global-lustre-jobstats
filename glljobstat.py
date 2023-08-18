@@ -16,7 +16,6 @@ import signal
 import urllib3
 import warnings
 import configparser
-from yaml import CLoader as Loader, CDumper as Dumper
 from multiprocessing import Process, Queue, Pool, Manager, active_children, Pipe
 from subprocess import Popen, PIPE, STDOUT
 from pprint import pprint
