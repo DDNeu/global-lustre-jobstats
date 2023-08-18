@@ -300,17 +300,20 @@ class JobStatsParser:
                 first = False
         print('}')
 
-    def print_top_jobs(self, top_jobs, timevalue):
+    def print_top_jobs(self, top_jobs, total_jobs, count, timevalue):
         '''
         print top_jobs in YAML
         '''
         global RATE
+        global HOSTS
 
         print('---') # mark the begining of YAML doc in stream
         print(f'timestamp: {int(time.time())}')
         if RATE:
             print(f'sample_duration: {timevalue}')
-        print("top_jobs:")
+        print(f'servers_queried: {len(HOSTS)}')
+        print(f'total_jobs: {total_jobs}')
+        print(f'top_{count}_jobs:')
         for job in top_jobs:
             self.print_job(job)
         print('...') # mark the end of YAML doc in stream
@@ -335,16 +338,16 @@ class JobStatsParser:
             for job in obj['job_stats']:
                 self.merge_job(jobs, job)
 
-        #print("Total jobs: ", len(jobs))
+        total_jobs = len(jobs)
         if RATE and not REFERENCE:
             jobs, duration = self.RateCalc(jobs, QUERY_TIME)
         elif RATE and REFERENCE:
             jobs, duration = self.RateCalc(jobs, QUERY_TIME)
             top_jobs = self.pick_top_jobs(jobs, self.args.count)
-            self.print_top_jobs(top_jobs, duration)
+            self.print_top_jobs(top_jobs, total_jobs, self.args.count, duration)
         else:
             top_jobs = self.pick_top_jobs(jobs, self.args.count)
-            self.print_top_jobs(top_jobs, QUERY_TIME)
+            self.print_top_jobs(top_jobs, total_jobs, self.args.count, QUERY_TIME)
         
 
     def run_once_par(self, HOSTS, STATSPARAM, SSHUSER, SSHKEY, SSHKEYTYPE, TYPE, HOSTPARAM):
@@ -384,16 +387,16 @@ class JobStatsParser:
             for job in obj['job_stats']:
                 self.merge_job(jobs, job)
 
-        #print("Total jobs: ", len(jobs))
+        total_jobs = len(jobs)
         if RATE and not REFERENCE:
             jobs, duration = self.RateCalc(jobs, QUERY_TIME)
         elif RATE and REFERENCE:
             jobs, duration = self.RateCalc(jobs, QUERY_TIME)
             top_jobs = self.pick_top_jobs(jobs, self.args.count)
-            self.print_top_jobs(top_jobs, duration)
+            self.print_top_jobs(top_jobs, total_jobs, self.args.count, duration)
         else:
             top_jobs = self.pick_top_jobs(jobs, self.args.count)
-            self.print_top_jobs(top_jobs, QUERY_TIME)
+            self.print_top_jobs(top_jobs, total_jobs, self.args.count, QUERY_TIME)
 
     def run_once_retry(self, HOSTS, STATSPARAM, SSHUSER, SSHKEY, SSHKEYTYPE, TYPE, HOSTPARAM):
         '''
