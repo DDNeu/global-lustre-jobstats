@@ -2,36 +2,31 @@
 
 '''
 lljobstat command. Read job_stats files, parse and aggregate data of every
-job on multiple OSS/MDS, show top jobs
+job on multiple OSS/MDS via SSH using key or password, show top jobs and more
 '''
 
-import argparse
 import sys
 import time
 #import yaml
 #import zaml
 import signal
-import configparser
+import argparse
 import warnings
+import configparser
 from pathlib import Path
+from getpass import getpass
 from os.path import expanduser
 from multiprocessing import Process, Queue
 import urllib3
 
-#try:
-#    from yaml import CLoader as Loader, CDumper as Dumper
-#except ImportError:
-#    print("Install libyaml-dev for faster processing using ", file=sys.stderr)
-#    from yaml import Loader, Dumper
-
 warnings.filterwarnings(action='ignore',module='.*paramiko.*')
 urllib3.disable_warnings()
 
-import paramiko
+import paramiko # pylint: disable=wrong-import-position
 
 signal.signal(signal.SIGINT, signal.default_int_handler)
 
-class ArgParser: # pylint: disable=too-few-public-methods
+class ArgParser: # pylint: disable=too-few-public-methods,too-many-instance-attributes
     '''
     Class to define lljobstat command arguments
     and parse the real command line arguments.
@@ -47,8 +42,9 @@ class ArgParser: # pylint: disable=too-few-public-methods
         self.keytype = None
         self.serverlist = None
         self.jobid_length = None
+        self.password = None
 
-    def run(self):
+    def run(self): # pylint: disable=too-many-statements
         '''
         define and parse arguments
         '''
@@ -102,7 +98,7 @@ class ArgParser: # pylint: disable=too-few-public-methods
             }
             self.config['SSH'] = {
                 'user': "SSH user to connect to OSS/MDS",
-                'key': "Path to SSH key file to use",
+                'key': "Path to SSH key file to use, leave empty to usw a password",
                 'keytype': "Key type used (DSS, DSA, ECDA, RSA, Ed25519)"
             }
 
@@ -128,13 +124,16 @@ class ArgParser: # pylint: disable=too-few-public-methods
         else:
             try:
                 self.jobid_length = int(self.config['MISC']['jobid_length'])
-            except Exception:
+            except Exception: # pylint: disable=bare-except,broad-exception-caught
                 self.jobid_length = 17
 
-        self.user = self.config['SSH']['user']
-        self.key = self.config['SSH']['key']
-        self.keytype = self.config['SSH']['keytype']
         self.serverlist = set(self.servers)
+        self.user = self.config['SSH']['user']
+        self.keytype = self.config['SSH']['keytype']
+        if self.config['SSH']['key']:
+            self.key = self.config['SSH']['key']
+        else:
+            self.password = getpass()
 
         if self.args.rate and (self.args.repeats > 0 and self.args.repeats < 2):
             self.args.repeats = 2
@@ -213,23 +212,7 @@ class JobStatsParser:
 
         return jobrate, duration
 
-    # def parse_single_job_stats(self, queue, data): # pylint: disable=no-self-use
-        # '''
-        # read single job_stats file, parse it and return an object
-        # '''
-        # output = data[0].replace('job_id:          @', 'job_id:          .')
-
-        # try:
-            # yaml_obj = yaml.load(output, Loader=Loader)  # need several seconds...
-            # #yaml_obj = zaml.load(output)
-        # except yaml.scanner.ScannerError:
-            # # only print the file name here
-            # print("failed to parse the content of %s" % param, file=sys.stdout)
-            # raise
-
-        # queue.put(yaml_obj)
-
-    def parse_single_job_stats_beo(self, queue, data):
+    def parse_single_job_stats_beo(self, queue, data): # pylint: disable=too-many-locals
         '''
         parse it manually into a dict
         '''
@@ -304,7 +287,7 @@ class JobStatsParser:
         job2['job_id'] = job['job_id']
         jobs[job['job_id']] = job2
 
-    def insert_job_sorted(self, top_jobs, count, job): # pylint: disable=no-self-use
+    def insert_job_sorted(self, top_jobs, count, job):
         '''
         insert job to top_jobs in descending order by the key job['ops'].
         top_jobs is an array with at most count elements
@@ -352,7 +335,7 @@ class JobStatsParser:
 
             opname = key
             if self.args.fullname:
-                opname = self.op_keys[key]
+                opname = self.op_keys
 
             print(f'{opname}: {job[val]}', end='')
             #print('%s: %d' % (opname, job[val]), end='')
@@ -376,7 +359,7 @@ class JobStatsParser:
         print('...') # mark the end of YAML doc in stream
 
 
-    def run_once_par(self, query_type):
+    def run_once_par(self, query_type): # pylint: disable=too-many-locals
         '''
         scan/parse/aggregate/print top jobs in given job_stats pattern/path(s)
         '''
@@ -403,7 +386,7 @@ class JobStatsParser:
                 objs.append(ret)
             for proc in procs:
                 proc.join()
-        except Exception as exn:
+        except Exception as exn: # pylint: disable=bare-except,broad-exception-caught
             print(exn)
             sys.exit()
 
@@ -431,7 +414,7 @@ class JobStatsParser:
             top_jobs = self.pick_top_jobs(jobs, self.args.count)
             self.print_top_jobs(top_jobs, total_jobs, self.args.count, query_time)
 
-    def run_once_retry(self, query_type):
+    def run_once_retry(self, query_type): #pylint: disable=inconsistent-return-statements
         '''
         Call run_once. If run_once succeeds, return.
         If run_once throws an exception, retry for few times.
@@ -439,39 +422,52 @@ class JobStatsParser:
         for i in range(2, -1, -1):  # 2, 1, 0
             try:
                 return self.run_once_par(query_type)
-            except Exception: # pylint: disable=bare-except
+            except Exception: # pylint: disable=bare-except,broad-exception-caught
                 if i == 0:
                     raise
 
-    def ssh_get(self, queue, host, query_type, cmd):
+    def ssh_get(self, queue, host, query_type, cmd): #pylint: disable=inconsistent-return-statements
         '''
         SSH to all servers and execute lctl command
         '''
+        ssh = paramiko.SSHClient()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
         try:
-            if self.argparser.keytype in ["DSS", "DSA"]:
-                ssh_pkey = paramiko.DSSKey.from_private_key_file(filename=self.argparser.key)
+            if self.argparser.password:
+                ssh.connect(hostname=host,
+                            username=self.argparser.user,
+                            password=self.argparser.password)
 
-            if self.argparser.keytype == "ECDSA":
-                ssh_pkey = paramiko.ECDSAKey.from_private_key_file(filename=self.argparser.key)
+            else:
+                if self.argparser.keytype in ["DSS", "DSA"]:
+                    ssh_pkey = paramiko.DSSKey.from_private_key_file(
+                        filename=self.argparser.key)
 
-            if self.argparser.keytype == "RSA":
-                ssh_pkey = paramiko.RSAKey.from_private_key_file(filename=self.argparser.key)
+                if self.argparser.keytype == "ECDSA":
+                    ssh_pkey = paramiko.ECDSAKey.from_private_key_file(
+                        filename=self.argparser.key)
 
-            if self.argparser.keytype == "Ed25519":
-                ssh_pkey = paramiko.Ed25519Key.from_private_key_file(filename=self.argparser.key)
+                if self.argparser.keytype == "RSA":
+                    ssh_pkey = paramiko.RSAKey.from_private_key_file(
+                        filename=self.argparser.key)
 
-            ssh = paramiko.SSHClient()
-            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            ssh.connect(hostname=host, username=self.argparser.user, pkey=ssh_pkey)
+                if self.argparser.keytype == "Ed25519":
+                    ssh_pkey = paramiko.Ed25519Key.from_private_key_file(
+                        filename=self.argparser.key)
+
+                ssh.connect(hostname=host,
+                            username=self.argparser.user,
+                            pkey=ssh_pkey)
 
             try:
                 stdin, stdout, stderr = ssh.exec_command(cmd)
-            except Exception as exn:
+            except Exception as exn: # pylint: disable=bare-except,broad-exception-caught
                 ssh.close()
                 print(exn)
-                error = stderr.read().decode(encoding='UTF-8')
+                error = stderr.read().decode(encoding='UTF-8') # pylint: disable=used-before-assignment
                 print(error)
-                stdinput = stdin.read().decode(encoding='UTF-8')
+                stdinput = stdin.read().decode(encoding='UTF-8') # pylint: disable=used-before-assignment
                 print(stdinput)
                 return "Exception running ssh.exec_command"
 
@@ -521,7 +517,7 @@ class JobStatsParser:
                     hostdata.append(ret)
             for proc in procs:
                 proc.join()
-        except Exception as exn:
+        except Exception as exn: # pylint: disable=bare-except,broad-exception-caught
             print(exn)
             sys.exit()
         else:
