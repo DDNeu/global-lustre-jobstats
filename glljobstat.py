@@ -335,7 +335,7 @@ class JobStatsParser:
 
             opname = key
             if self.args.fullname:
-                opname = self.op_keys
+                opname = self.op_keys[opname]
 
             print(f'{opname}: {job[val]}', end='')
             #print('%s: %d' % (opname, job[val]), end='')
