@@ -225,8 +225,65 @@ class JobStatsParser:
             # only print the file name here
             print("failed to parse the content of %s" % param, file=sys.stdout)
             raise
-
+            
         queue.put(yaml_obj)
+
+    def parse_single_job_stats_beo(self, queue, data):
+        '''
+        parse it manually into a dict
+        '''
+        data_iterable = iter(data[0].splitlines())
+        jd = {"job_stats": []}
+
+        for line in data_iterable:
+            try:
+                if line == "job_stats:":
+                    continue
+                if "- job_id:" in line:
+                    job_dict = {}
+                    splitline = line.split()
+                    key = splitline[1].rstrip(":")
+                    value = splitline[2]
+                    job_dict.update({key: value})
+                    continue
+                if "snapshot_time:" in line:
+                    splitline = line.split()
+                    key = splitline[0].strip(":")
+                    value = int(splitline[1])
+                    job_dict.update({key: value})
+                    continue
+                while not "- job_id:" in line:
+                    clean = line.replace(' ', '')
+                    metric_raw, values_raw = clean.split("{")
+                    metric = metric_raw.rstrip(":")
+                    value_list = values_raw.rstrip("}").split(",")
+                    metrics_dict = {metric: {}}
+
+                    for item in value_list:
+                        value_desc, value_counter_raw = item.split(":")
+
+                        try:
+                            value_counter = int(value_counter_raw)
+                        except ValueError as e:
+                            value_counter = value_counter_raw
+
+                        metrics_dict[metric].update({value_desc: value_counter})
+
+                    job_dict.update(metrics_dict)
+                    line = next(data_iterable)
+                jd["job_stats"].append(job_dict)
+                if "- job_id:" in line:
+                    job_dict = {}
+                    splitline = line.split()
+                    key = splitline[1].rstrip(":")
+                    value = splitline[2]
+                    job_dict.update({key: value})
+                    continue
+            except StopIteration as e:
+                jd["job_stats"].append(job_dict)
+                break
+
+        queue.put(jd)
 
     def merge_job(self, jobs, job):
         '''
@@ -332,6 +389,7 @@ class JobStatsParser:
 
         for data in STATSDATA:
             obj = self.parse_single_job_stats(data)
+
             if obj['job_stats'] is None:
                 continue
 
@@ -360,15 +418,19 @@ class JobStatsParser:
         jobs = {}
 
         QUERY_TIME = int(time.time())
+        ssh_start = time.time()
         STATSDATA = self.GetData(HOSTS, STATSPARAM, SSHUSER, SSHKEY, SSHKEYTYPE, TYPE, HOSTPARAM)
+        ssh_stop = time.time()
+        ssh_time = ssh_stop - ssh_start
 
+        parser_start = time.time()
         objs = []
         procs = []
         Q = Queue()
         
         try:
             for data in STATSDATA:
-                p = Process(target=self.parse_single_job_stats, args=(Q, [data]))
+                p = Process(target=self.parse_single_job_stats_beo, args=(Q, [data]))
                 procs.append(p)
                 p.start()
             for p in procs:
@@ -379,6 +441,12 @@ class JobStatsParser:
         except Exception as e:
             print(e)
             sys.exit()
+
+        parser_stop = time.time()
+        parser_time = parser_stop - parser_start
+        
+        #print(f"SSH time         : {ssh_time}")
+        #print(f"Parser time      : {parser_time}")
 
         for obj in objs:
             if obj['job_stats'] is None:
