@@ -6,27 +6,23 @@ job on multiple OSS/MDS, show top jobs
 '''
 
 import argparse
-import errno
-import subprocess
 import sys
 import time
-import yaml
+#import yaml
 #import zaml
 import signal
-import urllib3
-import warnings
 import configparser
-from multiprocessing import Process, Queue, Pool, Manager, active_children, Pipe
-from subprocess import Popen, PIPE, STDOUT
-from pprint import pprint
-from os.path import expanduser
+import warnings
 from pathlib import Path
+from os.path import expanduser
+from multiprocessing import Process, Queue
+import urllib3
 
-try:
-    from yaml import CLoader as Loader, CDumper as Dumper
-except ImportError:
-    print("Install libyaml-dev for faster processing using ", file=sys.stderr)
-    from yaml import Loader, Dumper
+#try:
+#    from yaml import CLoader as Loader, CDumper as Dumper
+#except ImportError:
+#    print("Install libyaml-dev for faster processing using ", file=sys.stderr)
+#    from yaml import Loader, Dumper
 
 warnings.filterwarnings(action='ignore',module='.*paramiko.*')
 urllib3.disable_warnings()
@@ -35,12 +31,6 @@ import paramiko
 
 signal.signal(signal.SIGINT, signal.default_int_handler)
 
-FILTER = ""
-FMOD = False
-RATE = False
-REFERENCE = {}
-REFERENCE_TIME = ""
-
 class ArgParser: # pylint: disable=too-few-public-methods
     '''
     Class to define lljobstat command arguments
@@ -48,12 +38,21 @@ class ArgParser: # pylint: disable=too-few-public-methods
     '''
     def __init__(self):
         self.args = None
+        self.configfile = None
+        self.config = None
+        self.servers = None
+        self.filter = None
+        self.user = None
+        self.key = None
+        self.keytype = None
+        self.serverlist = None
+        self.jobid_length = None
 
     def run(self):
         '''
         define and parse arguments
         '''
-        self.CONFIGFILE = expanduser("~/.glljobstat.conf")
+        self.configfile = expanduser("~/.glljobstat.conf")
 
         parser = argparse.ArgumentParser(prog='lljobstat',
                                          description='List top jobs.')
@@ -81,19 +80,25 @@ class ArgParser: # pylint: disable=too-few-public-methods
         parser.add_argument('-f', '--filter', dest='filter', type=str,
                             help='Comma separated list of job_ids to ignore')
         parser.add_argument('-fm', '--fmod', dest='fmod', action='store_true',
-                            help='Modify the filter to only show job_ids that match the filter instead of removing them')
+                            help="""Modify the filter to only show job_ids that
+                            match the filter instead of removing them""")
         parser.add_argument('-r', '--rate', dest='rate', action='store_true',
                             help='Calculate the rate between two queries')
+        parser.add_argument('-l', '--length', dest='jobid_length',
+                            help='Set job_id filename lenght for pretty printing')
 
         self.args = parser.parse_args()
         self.config = configparser.ConfigParser()
-        
-        if not Path(self.CONFIGFILE).is_file():
+
+        if not Path(self.configfile).is_file():
             self.config['SERVERS'] = {
                 'list': "Comma separated list of OSS/MDS to query",
             }
             self.config['FILTER'] = {
                 'list': "Comma separated list of job_ids to ignore",
+            }
+            self.config['MISC'] = {
+                'jobid_length': 17,
             }
             self.config['SSH'] = {
                 'user': "SSH user to connect to OSS/MDS",
@@ -101,42 +106,37 @@ class ArgParser: # pylint: disable=too-few-public-methods
                 'keytype': "Key type used (DSS, DSA, ECDA, RSA, Ed25519)"
             }
 
-            with open(self.CONFIGFILE, 'w') as f:
-                self.config.write(f)
-                print(f'Example configuration file {self.CONFIGFILE} created!')
+            with open(self.configfile, 'w', encoding='utf-8') as cfg:
+                self.config.write(cfg)
+                print(f'Example configuration file {self.configfile} created!')
                 sys.exit()
         else:
-            self.config.read(self.CONFIGFILE)
+            self.config.read(self.configfile)
 
         if self.args.servers:
-            self.servers = self.args.servers.split(",")
+            self.servers = set(self.args.servers.split(","))
         else:
-            self.servers = [i.strip() for i in self.config['SERVERS']['LIST'].split(",") if i != '']
+            self.servers = {i.strip() for i in self.config['SERVERS']['LIST'].split(",") if i != ''}
 
         if self.args.filter:
-            self.filter = self.args.filter.split(",")
+            self.filter = set(self.args.filter.split(","))
         else:
-            self.filter = [i.strip() for i in self.config['FILTER']['LIST'].split(",") if i != '']
-        
-        global FILTER
-        FILTER = set(self.filter)
+            self.filter = {i.strip() for i in self.config['FILTER']['LIST'].split(",") if i != ''}
+
+        if self.args.jobid_length:
+            self.jobid_length = int(self.args.jobid_length)
+        else:
+            try:
+                self.jobid_length = int(self.config['MISC']['jobid_length'])
+            except Exception:
+                self.jobid_length = 17
 
         self.user = self.config['SSH']['user']
         self.key = self.config['SSH']['key']
         self.keytype = self.config['SSH']['keytype']
         self.serverlist = set(self.servers)
-        
-        global FMOD
-        self.fmod = self.args.fmod
-        FMOD = self.fmod
-        
-        global HOSTS
-        HOSTS = self.serverlist
-        
-        global RATE
-        RATE = self.args.rate
-        
-        if RATE and (self.args.repeats > 0 and self.args.repeats < 2):
+
+        if self.args.rate and (self.args.repeats > 0 and self.args.repeats < 2):
             self.args.repeats = 2
 
 
@@ -175,27 +175,28 @@ class JobStatsParser:
 
     def __init__(self):
         self.args = None
+        self.argparser = None
+        self.hosts_param = None
+        self.reference_time = None
+        self.reference = {}
 
-    def RateCalc(self, jobs, QUERY_TIME):
+    def rate_calc(self, jobs, query_time):
         '''
         Class to calculate the rate between two queries
         '''
-        global REFERENCE
-        global REFERENCE_TIME
-        
         jobrate = {}
-        
-        if not REFERENCE:
-            REFERENCE = jobs
-            REFERENCE_TIME = QUERY_TIME
-            duration = QUERY_TIME
+
+        if not self.reference:
+            self.reference = jobs
+            self.reference_time = query_time
+            duration = query_time
         else:
-            duration = QUERY_TIME - REFERENCE_TIME
-            for job_id in REFERENCE:
+            duration = query_time - self.reference_time
+            for job_id in self.reference:
                 jobrate[job_id] = {}
-                for metric in REFERENCE[job_id]:
+                for metric in self.reference[job_id]:
                     if metric in self.op_keys.values():
-                        old = REFERENCE[job_id][metric]
+                        old = self.reference[job_id][metric]
                         try:
                             new = jobs[job_id][metric]
                         except KeyError:
@@ -205,35 +206,35 @@ class JobStatsParser:
                             rate = round(difference / duration)
                         jobrate[job_id][metric] = rate
                     else:
-                        jobrate[job_id][metric] = REFERENCE[job_id][metric]
+                        jobrate[job_id][metric] = self.reference[job_id][metric]
 
-            REFERENCE = jobs
-            REFERENCE_TIME = QUERY_TIME
+            self.reference = jobs
+            self.reference_time = query_time
 
         return jobrate, duration
 
-    def parse_single_job_stats(self, queue, data): # pylint: disable=no-self-use
-        '''
-        read single job_stats file, parse it and return an object
-        '''
-        output = data[0].replace('job_id:          @', f'job_id:          .')
+    # def parse_single_job_stats(self, queue, data): # pylint: disable=no-self-use
+        # '''
+        # read single job_stats file, parse it and return an object
+        # '''
+        # output = data[0].replace('job_id:          @', 'job_id:          .')
 
-        try:
-            yaml_obj = yaml.load(output, Loader=Loader)  # need several seconds...
-            #yaml_obj = zaml.load(output)
-        except yaml.scanner.ScannerError:
-            # only print the file name here
-            print("failed to parse the content of %s" % param, file=sys.stdout)
-            raise
-            
-        queue.put(yaml_obj)
+        # try:
+            # yaml_obj = yaml.load(output, Loader=Loader)  # need several seconds...
+            # #yaml_obj = zaml.load(output)
+        # except yaml.scanner.ScannerError:
+            # # only print the file name here
+            # print("failed to parse the content of %s" % param, file=sys.stdout)
+            # raise
+
+        # queue.put(yaml_obj)
 
     def parse_single_job_stats_beo(self, queue, data):
         '''
         parse it manually into a dict
         '''
         data_iterable = iter(data[0].splitlines())
-        jd = {"job_stats": []}
+        jobstats_dict = {"job_stats": []}
 
         for line in data_iterable:
             try:
@@ -264,14 +265,14 @@ class JobStatsParser:
 
                         try:
                             value_counter = int(value_counter_raw)
-                        except ValueError as e:
+                        except ValueError:
                             value_counter = value_counter_raw
 
                         metrics_dict[metric].update({value_desc: value_counter})
 
                     job_dict.update(metrics_dict)
                     line = next(data_iterable)
-                jd["job_stats"].append(job_dict)
+                jobstats_dict["job_stats"].append(job_dict)
                 if "- job_id:" in line:
                     job_dict = {}
                     splitline = line.split()
@@ -279,11 +280,11 @@ class JobStatsParser:
                     value = splitline[2]
                     job_dict.update({key: value})
                     continue
-            except StopIteration as e:
-                jd["job_stats"].append(job_dict)
+            except StopIteration:
+                jobstats_dict["job_stats"].append(job_dict)
                 break
 
-        queue.put(jd)
+        queue.put(jobstats_dict)
 
     def merge_job(self, jobs, job):
         '''
@@ -327,11 +328,11 @@ class JobStatsParser:
         '''
         top_jobs = []
         for _, job in jobs.items():
-            if FMOD:
-                if any(srv in str(job['job_id']) for srv in FILTER):
+            if self.args.fmod:
+                if any(srv in str(job['job_id']) for srv in self.argparser.filter):
                     self.insert_job_sorted(top_jobs, count, job)
             else:
-                if not any(srv in str(job['job_id']) for srv in FILTER):
+                if not any(srv in str(job['job_id']) for srv in self.argparser.filter):
                     self.insert_job_sorted(top_jobs, count, job)
 
         return top_jobs
@@ -340,7 +341,8 @@ class JobStatsParser:
         '''
         print single job
         '''
-        print('- %-16s {' % (job['job_id'] + ':'), end='')
+        #print('- %-16s {' % (job['job_id'] + ':'), end='')
+        print(f'- {job["job_id"] + ":" : <{self.argparser.jobid_length}}{{', end='')
         first = True
         for key, val in self.op_keys.items():
             if not val in job.keys():
@@ -352,7 +354,8 @@ class JobStatsParser:
             if self.args.fullname:
                 opname = self.op_keys[key]
 
-            print('%s: %d' % (opname, job[val]), end='')
+            print(f'{opname}: {job[val]}', end='')
+            #print('%s: %d' % (opname, job[val]), end='')
             if first:
                 first = False
         print('}')
@@ -361,90 +364,52 @@ class JobStatsParser:
         '''
         print top_jobs in YAML
         '''
-        global RATE
-        global HOSTS
-
         print('---') # mark the begining of YAML doc in stream
         print(f'timestamp: {int(time.time())}')
-        if RATE:
+        if self.args.rate:
             print(f'sample_duration: {timevalue}')
-        print(f'servers_queried: {len(HOSTS)}')
+        print(f'servers_queried: {len(self.argparser.serverlist)}')
         print(f'total_jobs: {total_jobs}')
         print(f'top_{count}_jobs:')
         for job in top_jobs:
             self.print_job(job)
         print('...') # mark the end of YAML doc in stream
 
-    def run_once_ser(self, HOSTS, STATSPARAM, SSHUSER, SSHKEY, SSHKEYTYPE, TYPE, HOSTPARAM):
+
+    def run_once_par(self, query_type):
         '''
         scan/parse/aggregate/print top jobs in given job_stats pattern/path(s)
         '''
-        global RATE
-        global REFERENCE
-        global REFERENCE_TIME
         jobs = {}
 
-        QUERY_TIME = int(time.time())
-        STATSDATA = self.GetData(HOSTS, STATSPARAM, SSHUSER, SSHKEY, SSHKEYTYPE, TYPE, HOSTPARAM)
+        query_time = int(time.time())
+        #ssh_start = time.time()
+        statsdata = self.get_data(query_type)
+        #ssh_stop = time.time()
+        #ssh_time = ssh_stop - ssh_start
 
-        for data in STATSDATA:
-            obj = self.parse_single_job_stats(data)
-
-            if obj['job_stats'] is None:
-                continue
-
-            for job in obj['job_stats']:
-                self.merge_job(jobs, job)
-
-        total_jobs = len(jobs)
-        if RATE and not REFERENCE:
-            jobs, duration = self.RateCalc(jobs, QUERY_TIME)
-        elif RATE and REFERENCE:
-            jobs, duration = self.RateCalc(jobs, QUERY_TIME)
-            top_jobs = self.pick_top_jobs(jobs, self.args.count)
-            self.print_top_jobs(top_jobs, total_jobs, self.args.count, duration)
-        else:
-            top_jobs = self.pick_top_jobs(jobs, self.args.count)
-            self.print_top_jobs(top_jobs, total_jobs, self.args.count, QUERY_TIME)
-        
-
-    def run_once_par(self, HOSTS, STATSPARAM, SSHUSER, SSHKEY, SSHKEYTYPE, TYPE, HOSTPARAM):
-        '''
-        scan/parse/aggregate/print top jobs in given job_stats pattern/path(s)
-        '''
-        global RATE
-        global REFERENCE
-        global REFERENCE_TIME
-        jobs = {}
-
-        QUERY_TIME = int(time.time())
-        ssh_start = time.time()
-        STATSDATA = self.GetData(HOSTS, STATSPARAM, SSHUSER, SSHKEY, SSHKEYTYPE, TYPE, HOSTPARAM)
-        ssh_stop = time.time()
-        ssh_time = ssh_stop - ssh_start
-
-        parser_start = time.time()
+        #parser_start = time.time()
         objs = []
         procs = []
-        Q = Queue()
-        
+        proc_q = Queue()
+
         try:
-            for data in STATSDATA:
-                p = Process(target=self.parse_single_job_stats_beo, args=(Q, [data]))
-                procs.append(p)
-                p.start()
-            for p in procs:
-                r = Q.get() # blocking
-                objs.append(r)
-            for p in procs:
-                p.join()
-        except Exception as e:
-            print(e)
+            for data in statsdata:
+                proc = Process(target=self.parse_single_job_stats_beo, args=(proc_q, [data]))
+                procs.append(proc)
+                proc.start()
+            for proc in procs:
+                ret = proc_q.get() # blocking
+                objs.append(ret)
+            for proc in procs:
+                proc.join()
+        except Exception as exn:
+            print(exn)
             sys.exit()
 
-        parser_stop = time.time()
-        parser_time = parser_stop - parser_start
-        
+        #parser_stop = time.time()
+        #parser_time = parser_stop - parser_start
+
         #print(f"SSH time         : {ssh_time}")
         #print(f"Parser time      : {parser_time}")
 
@@ -456,139 +421,136 @@ class JobStatsParser:
                 self.merge_job(jobs, job)
 
         total_jobs = len(jobs)
-        if RATE and not REFERENCE:
-            jobs, duration = self.RateCalc(jobs, QUERY_TIME)
-        elif RATE and REFERENCE:
-            jobs, duration = self.RateCalc(jobs, QUERY_TIME)
+        if self.args.rate and not self.reference:
+            jobs, duration = self.rate_calc(jobs, query_time)
+        elif self.args.rate and self.reference:
+            jobs, duration = self.rate_calc(jobs, query_time)
             top_jobs = self.pick_top_jobs(jobs, self.args.count)
             self.print_top_jobs(top_jobs, total_jobs, self.args.count, duration)
         else:
             top_jobs = self.pick_top_jobs(jobs, self.args.count)
-            self.print_top_jobs(top_jobs, total_jobs, self.args.count, QUERY_TIME)
+            self.print_top_jobs(top_jobs, total_jobs, self.args.count, query_time)
 
-    def run_once_retry(self, HOSTS, STATSPARAM, SSHUSER, SSHKEY, SSHKEYTYPE, TYPE, HOSTPARAM):
+    def run_once_retry(self, query_type):
         '''
         Call run_once. If run_once succeeds, return.
         If run_once throws an exception, retry for few times.
         '''
         for i in range(2, -1, -1):  # 2, 1, 0
             try:
-                return self.run_once_par(HOSTS, STATSPARAM, SSHUSER, SSHKEY, SSHKEYTYPE, TYPE, HOSTPARAM)
-                #return self.run_once_ser(HOSTS, STATSPARAM, SSHUSER, SSHKEY, SSHKEYTYPE, TYPE, HOSTPARAM)
-            except Exception as e: # pylint: disable=bare-except
+                return self.run_once_par(query_type)
+            except Exception: # pylint: disable=bare-except
                 if i == 0:
                     raise
 
-
-    def SSHGet(self, queue, HOST, STATSPARAM, SSHUSER, SSHKEY, SSHKEYTYPE, TYPE, CMD):
+    def ssh_get(self, queue, host, query_type, cmd):
+        '''
+        SSH to all servers and execute lctl command
+        '''
         try:
+            if self.argparser.keytype in ["DSS", "DSA"]:
+                ssh_pkey = paramiko.DSSKey.from_private_key_file(filename=self.argparser.key)
 
-            if SSHKEYTYPE == "DSS" or SSHKEYTYPE == "DSA":
-                ssh_pkey = paramiko.DSSKey.from_private_key_file(filename=SSHKEY)
+            if self.argparser.keytype == "ECDSA":
+                ssh_pkey = paramiko.ECDSAKey.from_private_key_file(filename=self.argparser.key)
 
-            if SSHKEYTYPE == "ECDSA":
-                ssh_pkey = paramiko.ECDSAKey.from_private_key_file(filename=SSHKEY)
+            if self.argparser.keytype == "RSA":
+                ssh_pkey = paramiko.RSAKey.from_private_key_file(filename=self.argparser.key)
 
-            if SSHKEYTYPE == "RSA":
-                ssh_pkey = paramiko.RSAKey.from_private_key_file(filename=SSHKEY)
-
-            if SSHKEYTYPE == "Ed25519":
-                ssh_pkey = paramiko.Ed25519Key.from_private_key_file(filename=SSHKEY)
+            if self.argparser.keytype == "Ed25519":
+                ssh_pkey = paramiko.Ed25519Key.from_private_key_file(filename=self.argparser.key)
 
             ssh = paramiko.SSHClient()
             ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            ssh.connect(hostname=HOST, username=SSHUSER, pkey=ssh_pkey)
+            ssh.connect(hostname=host, username=self.argparser.user, pkey=ssh_pkey)
 
             try:
-                stdin, stdout, stderr = ssh.exec_command(CMD)
-            except Exeption as e:
+                stdin, stdout, stderr = ssh.exec_command(cmd)
+            except Exception as exn:
                 ssh.close()
-                print(e)
+                print(exn)
                 error = stderr.read().decode(encoding='UTF-8')
                 print(error)
-                return "Exeption running ssh.exec_command"
-            else:
-                output = stdout.read().decode(encoding='UTF-8')
+                stdinput = stdin.read().decode(encoding='UTF-8')
+                print(stdinput)
+                return "Exception running ssh.exec_command"
 
-            if TYPE == "param":
-                hostparam = {HOST: output.split()}
+            output = stdout.read().decode(encoding='UTF-8')
+
+            if query_type == "param":
+                hostparam = {host: output.split()}
                 queue.put(hostparam)
-            if TYPE == "stats":
+            if query_type == "stats":
                 queue.put(output)
 
-        except KeyboardInterrupt as e:
+        except KeyboardInterrupt:
             print('Received KeyboardInterrupt in run()')
             sys.exit()
 
-    def GetData(self, HOSTS, STATSPARAM, SSHUSER, SSHKEY, SSHKEYTYPE, TYPE, HOSTPARAM):
+    def get_data(self, query_type):
         '''
-        comment
+        Spawn SSH connections to each server in parallel to gather data
         '''
-        if TYPE == "param":
-            HOSTDATA = {}
-        if TYPE == "stats":
-            HOSTDATA = []
+        if query_type == "param":
+            hostdata = {}
+        if query_type == "stats":
+            hostdata = []
 
         procs = []
-        Q = Queue()
+        proc_q = Queue()
 
         try:
-            for HOST in HOSTS:
-                if TYPE == "param":
-                    CMD = f'lctl list_param {STATSPARAM}'
-                    p = Process(target=self.SSHGet, args=(Q, HOST, STATSPARAM, SSHUSER, SSHKEY, SSHKEYTYPE, TYPE, CMD))
-                    procs.append(p)
-                    p.start()
-                if TYPE == "stats":
-                    for PARAM in HOSTPARAM[HOST]:
-                        CMD = f'lctl get_param -n {PARAM}'
-                        p = Process(target=self.SSHGet, args=(Q, HOST, STATSPARAM, SSHUSER, SSHKEY, SSHKEYTYPE, TYPE, CMD))
-                        procs.append(p)
-                        p.start()
- 
-            for p in procs:
-                r = Q.get() # blocking
-                if TYPE == "param":
-                    HOSTDATA.update(r)
-                if TYPE == "stats":
-                    HOSTDATA.append(r)
-            for p in procs:
-                p.join()
-        except Exception as e:
-            print(e)
-            sys.exit()            
-        else:
-            return HOSTDATA
+            for host in self.argparser.serverlist:
+                if query_type == "param":
+                    cmd = f'lctl list_param {self.args.param}'
+                    proc = Process(target=self.ssh_get, args=(proc_q, host, query_type, cmd))
+                    procs.append(proc)
+                    proc.start()
+                if query_type == "stats":
+                    for param in self.hosts_param[host]:
+                        cmd = f'lctl get_param -n {param}'
+                        proc = Process(target=self.ssh_get, args=(proc_q, host, query_type, cmd))
+                        procs.append(proc)
+                        proc.start()
 
-    def RunBEO(self):
+            for proc in procs:
+                ret = proc_q.get() # blocking
+                if query_type == "param":
+                    hostdata.update(ret)
+                if query_type == "stats":
+                    hostdata.append(ret)
+            for proc in procs:
+                proc.join()
+        except Exception as exn:
+            print(exn)
+            sys.exit()
+        else:
+            return hostdata
+
+    def Run(self):
         '''
         run task periodically or for some times with given interval
         '''
-        argparser = ArgParser()
-        argparser.run()
-        self.args = argparser.args
+        self.argparser = ArgParser()
+        self.argparser.run()
+        self.args = self.argparser.args
 
-        STATSPARAM = self.args.param
-        HOSTS = argparser.serverlist
-        SSHUSER = argparser.user
-        SSHKEY = argparser.key
-        SSHKEYTYPE = argparser.keytype
-        
-        CMD = f'lctl list_param {STATSPARAM}'
-        HOSTPARAM = self.GetData(HOSTS, STATSPARAM, SSHUSER, SSHKEY, SSHKEYTYPE, "param", "")
-        
+        #self.reference = {}
+        #self.reference_time = ""
+
+        self.hosts_param = self.get_data("param")
+
         i = 0
         try:
             while True:
-                self.run_once_retry(HOSTS, STATSPARAM, SSHUSER, SSHKEY, SSHKEYTYPE, "stats", HOSTPARAM)
+                self.run_once_retry("stats")
                 i += 1
                 if self.args.repeats != -1 and i >= self.args.repeats:
                     break
                 time.sleep(self.args.interval)
-        except (KeyboardInterrupt):
+        except KeyboardInterrupt:
             print("\nReceived KeyboardInterrupt - stopping")
             sys.exit()
- 
+
 if __name__ == "__main__":
-    JobStatsParser().RunBEO()
-       
+    JobStatsParser().Run()
