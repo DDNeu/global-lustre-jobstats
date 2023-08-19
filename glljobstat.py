@@ -1,7 +1,7 @@
 #!/bin/env python3
 
 '''
-lljobstat command. Read job_stats files, parse and aggregate data of every
+glljobstat command. Read job_stats files, parse and aggregate data of every
 job on multiple OSS/MDS via SSH using key or password, show top jobs and more
 '''
 
