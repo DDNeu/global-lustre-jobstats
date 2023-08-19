@@ -8,7 +8,8 @@ glljobstat.py is based on [lljobstat](https://review.whamcloud.com/c/fs/lustre-r
 * Use "naive" parsing to get another 3x speed up over ymal CLoader
 * Filter for certain job_ids
 * Filter out certain job_ids
-* Config file for SSH, OSS/MDS & filter settings
+* Config file for SSH, OSS/MDS, filter and other settings
+* Configure job_id name leght for pretty printing
 
 This is still very rudimental!
 A proper tool would allow filtering for specific OST/MDTs etc... patches welcome!
@@ -19,7 +20,7 @@ A proper tool would allow filtering for specific OST/MDTs etc... patches welcome
 (lljobstat) [root@n2oss1 bolausson]# ./glljobstat.py --help
 usage: lljobstat [-h] [-c COUNT] [-i INTERVAL] [-n REPEATS] [--param PARAM]
                  [-o] [-m] [-s SERVERS] [--fullname] [--no-fullname]
-                 [-f FILTER] [-fm] [-r]
+                 [-f FILTER] [-fm] [-r] [-l JOBID_LENGTH]
 
 List top jobs.
 
@@ -44,6 +45,8 @@ optional arguments:
   -fm, --fmod           Modify the filter to only show job_ids that match the
                         filter instead of removing them
   -r, --rate            Calculate the rate between two queries
+  -l JOBID_LENGTH, --length JOBID_LENGTH
+                        Set job_id filename lenght for pretty printing
 ```
 
 ### Run twice, calculate rate, show top 10 jobs:
