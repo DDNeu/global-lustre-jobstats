@@ -112,7 +112,7 @@ class ArgParser: # pylint: disable=too-few-public-methods,too-many-instance-attr
             }
             self.config['MISC'] = {
                 'jobid_length': 17,
-                'totalratefile': expanduser("~/.glljobstat.db")
+                'totalratefile': expanduser("~/.glljobstat.pickle")
             }
             self.config['SSH'] = {
                 'user': "SSH user to connect to OSS/MDS",
