@@ -1,4 +1,4 @@
-#!/root/bolausson/lljobstat/bin/python3
+#!/usr/bin/env python3
 
 '''
 glljobstat command. Read job_stats files, parse and aggregate data of every
