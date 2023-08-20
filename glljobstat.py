@@ -219,7 +219,7 @@ class JobStatsParser:
         Class to upate/read the ever highest ops rate picks
         '''
         newtopops = {}
-        
+
         # Workaround as on some systems the poped items
         # are removed globally and others they are not.
         temp_ops = deepcopy(total_ops)
