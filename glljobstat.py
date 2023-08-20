@@ -1,4 +1,4 @@
-#!/bin/env python3
+#!/root/bolausson/lljobstat/bin/python3
 
 '''
 glljobstat command. Read job_stats files, parse and aggregate data of every
@@ -13,6 +13,7 @@ import argparse
 import warnings
 import configparser
 from pathlib import Path
+from copy import deepcopy
 from getpass import getpass
 from os.path import expanduser
 from multiprocessing import Process, Queue
@@ -112,7 +113,7 @@ class ArgParser: # pylint: disable=too-few-public-methods,too-many-instance-attr
             }
             self.config['MISC'] = {
                 'jobid_length': 17,
-                'totalratefile': expanduser("~/.glljobstat.pickle")
+                'totalratefile': expanduser("~/.glljobstat.db")
             }
             self.config['SSH'] = {
                 'user': "SSH user to connect to OSS/MDS",
@@ -218,20 +219,24 @@ class JobStatsParser:
         Class to upate/read the ever highest ops rate picks
         '''
         newtopops = {}
+        
+        # Workaround as on some systems the poped items
+        # are removed globally and others they are not.
+        temp_ops = deepcopy(total_ops)
 
         try:
             with open(self.args.totalratefile, 'rb') as picf:
                 oldjobs = pickle.load(picf)
         except FileNotFoundError:
             with open(self.args.totalratefile, 'wb') as picf:
-                pickle.dump(total_ops, picf, pickle.HIGHEST_PROTOCOL)
+                pickle.dump(temp_ops, picf, pickle.HIGHEST_PROTOCOL)
             return False
 
         for ops in oldjobs.keys():
             oldops = oldjobs[ops]
 
             try:
-                newops = total_ops[ops]
+                newops = temp_ops[ops]
             except KeyError:
                 newtopops[ops] = oldops
                 continue
@@ -241,10 +246,10 @@ class JobStatsParser:
             else:
                 newtopops[ops] = oldops
 
-            total_ops.pop(ops, None)
+            temp_ops.pop(ops, None)
 
-        if total_ops:
-            newtopops.update(total_ops)
+        if temp_ops:
+            newtopops.update(temp_ops)
 
         return newtopops
 
