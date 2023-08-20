@@ -251,6 +251,9 @@ class JobStatsParser:
         if temp_ops:
             newtopops.update(temp_ops)
 
+        with open(self.args.totalratefile, 'wb') as picf:
+            pickle.dump(newtopops, picf, pickle.HIGHEST_PROTOCOL)
+
         return newtopops
 
 
