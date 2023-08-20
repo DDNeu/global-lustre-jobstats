@@ -1,5 +1,5 @@
 # global-lustre-jobstats
-glljobstat.py is based on [lljobstat](https://review.whamcloud.com/c/fs/lustre-release/+/48888/28/lustre/utils/lljobstat) with some enhencements!
+glljobstat.py is based on [lljobstat](https://review.whamcloud.com/c/fs/lustre-release/+/48888) with some enhencements!
 
 ## Enhancements:
 * Aggreate stats over multiple OSS/MDS via SSH in parallel (key and password auth supported)
