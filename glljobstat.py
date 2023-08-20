@@ -485,7 +485,7 @@ class JobStatsParser:
             print(f'top_{count}_jobs:')
         for job in top_jobs:
             self.print_job(job)
-        if not (self.args.total or self.args.totalrate or self.args.percentage):
+        if not (self.args.total or self.args.totalrate or self.args.percent):
             print('...') # mark the end of YAML doc in stream
 
 
