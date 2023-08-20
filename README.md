@@ -4,6 +4,9 @@ glljobstat.py is based on [lljobstat](https://review.whamcloud.com/c/fs/lustre-r
 ## Enhancements:
 * Aggreate stats over multiple OSS/MDS via SSH in parallel (key and password auth supported)
 * Calculate the rate of each job between queries
+* Show sum of ops over all jobs
+* Show job ops in percentage to total ops
+* Keep track of highest ever ops in pickle file
 * Process returned strings to yaml like objects in parallel (3x faster)
 * Use "naive" parsing to get another 3x speed up over ymal CLoader
 * Filter for certain job_ids
@@ -20,7 +23,8 @@ A proper tool would allow filtering for specific OST/MDTs etc... patches welcome
 (lljobstat) [root@n2oss1 bolausson]# ./glljobstat.py --help
 usage: lljobstat [-h] [-c COUNT] [-i INTERVAL] [-n REPEATS] [--param PARAM]
                  [-o] [-m] [-s SERVERS] [--fullname] [--no-fullname]
-                 [-f FILTER] [-fm] [-r] [-l JOBID_LENGTH]
+                 [-f FILTER] [-fm] [-l JOBID_LENGTH] [-t] [-tr]
+                 [-trf TOTALRATEFILE] [-p] [-d | -r]
 
 List top jobs.
 
@@ -44,9 +48,19 @@ optional arguments:
                         Comma separated list of job_ids to ignore
   -fm, --fmod           Modify the filter to only show job_ids that match the
                         filter instead of removing them
-  -r, --rate            Calculate the rate between two queries
   -l JOBID_LENGTH, --length JOBID_LENGTH
                         Set job_id filename lenght for pretty printing
+  -t, --total           Show sum over all jobs for each operation
+  -tr, --totalrate      Whenever -tr is is used, a persistent file will be
+                        created and keep track of the highest rate ever
+  -trf TOTALRATEFILE, --totalratefile TOTALRATEFILE
+                        Path to a pickle file which will keep track of the
+                        higest rate (default /root/.glljobstat.pickle)
+  -p, --percent         Show top jobs in percentage to total ops
+
+Mutually exclusive options:
+  -d, --dif             Show change in counters between two queries
+  -r, --rate            Calculate the rate between two queries
 ```
 
 ### Run twice, calculate rate, show top 10 jobs:
@@ -121,5 +135,83 @@ top_jobs:
 - .0@n2oss1:       {ops: 91816850, op: 5746868, cl: 13828360, mn: 3546209, ga: 48367908, sa: 9069627, gx: 1669877, sx: 3385, st: 170, sy: 3657138, rd: 3271902, wr: 2562619, pu: 92787}
 - .994@n2gpu1220:  {ops: 25937, ga: 14092, st: 11845}
 ...
-(lljobstat) [root@n2oss1 bolausson]#
+```
+### Run once show show top 3 job ops in percentage to total ops:
+```
+(lljobstat) [root@n2oss1 bolausson]# ./glljobstat.py -c 3 -n 1 -p
+---
+timestamp: 1692539118
+servers_queried: 8
+total_jobs: 2685
+top_3_job_pct:
+- 4636497@46526@n2cn0309:  {ops: 5, rd: 34}
+- @0@n2oss4:               {ops: 4, op: 1, cl: 1, mn: 3, ga: 9, sa: 8, gx: 1, sx: 65, st: 3, sy: 11, rd: 3, wr: 6, pu: 0}
+- @0@n2oss8:               {ops: 4, op: 1, cl: 1, mn: 2, ga: 4, sa: 9, gx: 1, sx: 17, st: 0, sy: 12, rd: 7, wr: 10, pu: 0}
+total_ops:
+- ops:      12436410100
+- cl:       3018058674
+- ga:       2197691775
+- rd:       1967042552
+- sa:       1145471585
+- pu:       962228627
+- op:       932456965
+- wr:       694215410
+- gx:       462296796
+- sy:       331497851
+- mn:       282894686
+- ul:       252913403
+- mv:       106893338
+- st:       82096591
+- sx:       231171
+- mk:       219073
+- rm:       199743
+- ln:       1836
+- qc:       24
+...
+```
+### Run once show show top 3 jobs ops, total ops rate and highest op rate ever:
+```
+(lljobstat) [root@n2oss1 bolausson]# ./glljobstat.py -c 3 -n 1 -tr
+---
+timestamp: 1692539402
+sample_duration: 12
+servers_queried: 8
+total_jobs: 2698
+top_3_job_rates:
+- 4636497@46526@n2cn0309:  {ops: 9033, rd: 9033, wr: 0}
+- 4633225@92097@n2lcn0144: {ops: 1393, rd: 1385, wr: 8}
+- 4633221@92097@n2lcn0144: {ops: 1325, rd: 1317, wr: 8}
+total_op_rate:
+- cl:       4962
+- op:       2035
+- mn:       1222
+- gx:       613
+- ul:       311
+- mv:       121
+- mk:       84
+- st:       0
+- sx:       0
+- rm:       0
+- ln:       0
+total_op_rate_ever:
+- rd:       15271
+- cl:       4962
+- ops:      3177
+- ga:       2439
+- op:       2035
+- wr:       1491
+- pu:       1440
+- mn:       1222
+- sa:       911
+- gx:       613
+- ul:       311
+- sy:       139
+- mv:       121
+- mk:       84
+- qc:       0
+- st:       0
+- sx:       0
+- rm:       0
+- ln:       0
+...
 ```
