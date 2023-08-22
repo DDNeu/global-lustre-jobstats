@@ -359,8 +359,14 @@ class JobStatsParser:
                 if "snapshot_time:" in line:
                     splitline = line.split()
                     key = splitline[0].strip(":")
-                    value = int(splitline[1])
+                    #Remove trailing .nsecs value from snapshot_time introduced in Lustre 2.15
+                    value = int(splitline[1].split('.', 1)[0])
                     job_dict.update({key: value})
+                    continue
+                #Skip start_time and elapsed_time lines introduced in Lustre 2.15.2 (LU-11407)
+                if "start_time:" in line:
+                    continue
+                if "elapsed_time:" in line:
                     continue
                 while not "- job_id:" in line:
                     clean = line.replace(' ', '')
