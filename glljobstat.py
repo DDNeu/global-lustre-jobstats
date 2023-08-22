@@ -212,6 +212,7 @@ class JobStatsParser:
         self.argparser = None
         self.hosts_param = None
         self.reference_time = None
+        self.reference_snaptime = None
         self.reference = {}
 
     def topdb(self, total_ops):
@@ -257,7 +258,7 @@ class JobStatsParser:
         return newtopops
 
 
-    def rate_calc(self, jobs, query_time):
+    def rate_calc(self, jobs, query_time, timestamp_dict): # pylint: disable=too-many-branches
         '''
         Class to calculate the rate between two queries
         '''
@@ -266,11 +267,25 @@ class JobStatsParser:
         if not self.reference: # pylint: disable=too-many-nested-blocks
             self.reference = jobs
             self.reference_time = query_time
+            self.reference_snaptime = timestamp_dict
             duration = query_time
         else:
-            duration = query_time - self.reference_time
             for job_id in self.reference:
                 jobrate[job_id] = {}
+
+                try:
+                    job_snap_time_new = timestamp_dict[job_id]["snapshot_time"]
+                except KeyError:
+                    continue
+
+                try:
+                    job_snap_time_ref = self.reference_snaptime[job_id]["snapshot_time"]
+                except KeyError:
+                    continue
+
+                job_snap_time_new = timestamp_dict[job_id]["snapshot_time"]
+                duration = job_snap_time_new - job_snap_time_ref
+
                 for metric in self.reference[job_id]:
                     if metric in self.op_keys.values():
                         old = self.reference[job_id][metric]
@@ -281,7 +296,10 @@ class JobStatsParser:
                         else:
                             dif = new - old
                             if self.args.rate:
-                                rate = round(dif / duration)
+                                if duration == 0:
+                                    rate = 0
+                                else:
+                                    rate = round(dif / duration)
                             if self.args.difference:
                                 rate = dif
                         jobrate[job_id][metric] = rate
@@ -289,6 +307,7 @@ class JobStatsParser:
                         jobrate[job_id][metric] = self.reference[job_id][metric]
 
             self.reference = jobs
+            self.reference_snaptime = timestamp_dict
             self.reference_time = query_time
 
         return jobrate, duration
@@ -356,17 +375,14 @@ class JobStatsParser:
                     value = splitline[2]
                     job_dict.update({key: value})
                     continue
-                if "snapshot_time:" in line:
+                if any(timekey in line for timekey in ['snapshot_time:',
+                                                        'start_time:',
+                                                        'elapsed_time:']):
                     splitline = line.split()
                     key = splitline[0].strip(":")
                     #Remove trailing .nsecs value from snapshot_time introduced in Lustre 2.15
                     value = int(splitline[1].split('.', 1)[0])
                     job_dict.update({key: value})
-                    continue
-                #Skip start_time and elapsed_time lines introduced in Lustre 2.15.2 (LU-11407)
-                if "start_time:" in line:
-                    continue
-                if "elapsed_time:" in line:
                     continue
                 while not "- job_id:" in line:
                     clean = line.replace(' ', '')
@@ -402,14 +418,21 @@ class JobStatsParser:
         queue.put(jobstats_dict)
 
 
-    def merge_job(self, jobs, job):
+    def merge_job(self, jobs, job, timestamp_dict):
         '''
         merge stats data of job to jobs
         '''
+        jobid = job['job_id']
         job2 = jobs.get(job['job_id'], {})
+        timestamp_dict[jobid] = {}
+
+        include_metrics = list(self.op_keys.values())
+        timestamp_id = ["snapshot_time", "start_time", "elapsed_time"]
 
         for key in job.keys():
-            if key not in self.op_keys.values():
+            if key in timestamp_id:
+                timestamp_dict[jobid].update({key: job[key]})
+            if key not in include_metrics:
                 continue
             if job[key]['samples'] == 0:
                 continue
@@ -417,9 +440,8 @@ class JobStatsParser:
             job2[key] = job2.get(key, 0) + job[key]['samples']
             job2['ops'] = job2.get('ops', 0) + job[key]['samples']
 
-        job2['job_id'] = job['job_id']
-        jobs[job['job_id']] = job2
-
+        job2['job_id'] = jobid
+        jobs[jobid] = job2
 
     def insert_job_sorted(self, top_jobs, count, job):
         '''
@@ -480,15 +502,15 @@ class JobStatsParser:
         print('}')
 
 
-    def print_top_jobs(self, top_jobs, total_jobs, count, timevalue, query_time): # pylint: disable=too-many-arguments
+    def print_top_jobs(self, top_jobs, total_jobs, count, timevalue, query_time): # pylint: disable=too-many-arguments,unused-argument
         '''
         print top_jobs in YAML
         '''
         print('---') # mark the begining of YAML doc in stream
         #print(f'timestamp: {int(time.time())}')
         print(f'timestamp: {query_time}')
-        if self.args.rate or self.args.difference:
-            print(f'sample_duration: {timevalue}')
+        #if self.args.rate or self.args.difference:
+        #    print(f'sample_duration: {timevalue}')
         print(f'servers_queried: {len(self.argparser.serverlist)}')
         print(f'total_jobs: {total_jobs}')
         if self.args.percent:
@@ -540,6 +562,7 @@ class JobStatsParser:
         scan/parse/aggregate/print top jobs in given job_stats pattern/path(s)
         '''
         jobs = {}
+        timestamp_dict = {}
 
         query_time = int(time.time())
         #ssh_start = time.time()
@@ -577,14 +600,14 @@ class JobStatsParser:
                 continue
 
             for job in obj['job_stats']:
-                self.merge_job(jobs, job)
+                self.merge_job(jobs, job, timestamp_dict)
 
         total_jobs = len(set(jobs))
 
         if (self.args.rate or self.args.difference) and not self.reference:
-            jobs, duration = self.rate_calc(jobs, query_time)
+            jobs, duration = self.rate_calc(jobs, query_time, timestamp_dict)
         elif (self.args.rate or self.args.difference) and self.reference:
-            jobs, duration = self.rate_calc(jobs, query_time)
+            jobs, duration = self.rate_calc(jobs, query_time, timestamp_dict)
             if self.args.total or self.args.percent or self.args.totalrate:
                 total_ops = self.total_calc(jobs)
             if self.args.totalrate and self.args.total:
