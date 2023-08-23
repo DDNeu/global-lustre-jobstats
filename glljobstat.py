@@ -466,11 +466,15 @@ class JobStatsParser:
         top_jobs.append(job)
 
         for i in range(len(top_jobs) - 2, -1, -1):
-            if job['ops'] > top_jobs[i]['ops']:
-                top_jobs[i + 1] = top_jobs[i]
-                top_jobs[i] = job
-            else:
-                break
+
+            try:
+                if job['ops'] > top_jobs[i]['ops']:
+                    top_jobs[i + 1] = top_jobs[i]
+                    top_jobs[i] = job
+                else:
+                    break
+            except KeyError:
+                pass
 
         if len(top_jobs) > count:
             top_jobs.pop()
@@ -520,7 +524,8 @@ class JobStatsParser:
             sw_name = self.misc_keys['sw']
         else:
             sw_name = 'sw'
-        print(f', {sw_name}: {sampling_window}', end='')
+        if sampling_window:
+            print(f', {sw_name}: {sampling_window}', end='')
         print('}')
 
 
@@ -547,11 +552,14 @@ class JobStatsParser:
         else:
             print(f'top_{count}_jobs:', end="")
         if not top_jobs:
-            print(f' []')
+            print(' []')
         else:
             print('')
             for job in top_jobs:
-                sampling_window = job_sampling_window[job['job_id']]
+                if job_sampling_window:
+                    sampling_window = job_sampling_window[job['job_id']]
+                else:
+                    sampling_window = False
                 self.print_job(job, sampling_window)
         if not (self.args.total or self.args.totalrate or self.args.percent):
             print('...') # mark the end of YAML doc in stream
