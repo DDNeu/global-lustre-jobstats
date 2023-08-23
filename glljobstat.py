@@ -483,6 +483,8 @@ class JobStatsParser:
         '''
         top_jobs = []
         for _, job in jobs.items():
+            if not any(val != 0 and type(val) == int for val in job.values()):
+                continue
             if self.args.fmod:
                 if any(srv in str(job['job_id']) for srv in self.argparser.filter):
                     self.insert_job_sorted(top_jobs, count, job)
@@ -539,14 +541,18 @@ class JobStatsParser:
         print(f'servers_queried: {len(self.argparser.serverlist)}')
         print(f'total_jobs: {total_jobs}')
         if self.args.percent:
-            print(f'top_{count}_job_pct:')
+            print(f'top_{count}_job_pct:', end="")
         elif self.args.rate or self.args.difference:
-            print(f'top_{count}_job_rates:')
+            print(f'top_{count}_job_rates:', end="")
         else:
-            print(f'top_{count}_jobs:')
-        for job in top_jobs:
-            sampling_window = job_sampling_window[job['job_id']]
-            self.print_job(job, sampling_window)
+            print(f'top_{count}_jobs:', end="")
+        if not top_jobs:
+            print(f' []')
+        else:
+            print('')
+            for job in top_jobs:
+                sampling_window = job_sampling_window[job['job_id']]
+                self.print_job(job, sampling_window)
         if not (self.args.total or self.args.totalrate or self.args.percent):
             print('...') # mark the end of YAML doc in stream
 
