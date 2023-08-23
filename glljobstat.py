@@ -487,7 +487,7 @@ class JobStatsParser:
         '''
         top_jobs = []
         for _, job in jobs.items():
-            if not any(val != 0 and type(val) == int for val in job.values()):
+            if not any(val != 0 and isinstance(val, int) for val in job.values()):
                 continue
             if self.args.fmod:
                 if any(srv in str(job['job_id']) for srv in self.argparser.filter):
