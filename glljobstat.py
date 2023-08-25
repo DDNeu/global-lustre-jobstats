@@ -87,9 +87,9 @@ class ArgParser: # pylint: disable=too-few-public-methods,too-many-instance-attr
                             help="""Whenever -tr is is used, a persistent file
                             will be created and keep track of the highest rate ever""")
         parser.add_argument('-trf', '--totalratefile', dest='totalratefile', type=str,
-                            default=expanduser("~/.glljobstat.pickle"),
+                            default=expanduser("~/.glljobstatdb.pickle"),
                             help=f"""Path to a pickle file which will keep track of
-                            the higest rate (default {expanduser("~/.glljobstat.pickle")})""")
+                            the higest rate (default {expanduser("~/.glljobstatdb.pickle")})""")
         parser.add_argument('-p', '--percent', dest='percent', action='store_true',
                             help='Show top jobs in percentage to total ops')
         parser.add_argument('-ht', '--humantime', dest='humantime', action='store_true',
@@ -208,6 +208,35 @@ class JobStatsParser:
         'pa' : 'prealloc'
     }
 
+    op_keys_rev = {
+        'ops'      : 'ops',
+        'create'   : 'cr',
+        'open'     : 'op',
+        'close'    : 'cl',
+        'mknod'    : 'mn',
+        'link'     : 'ln',
+        'unlink'   : 'ul',
+        'mkdir'    : 'mk',
+        'rmdir'    : 'rm',
+        'rename'   : 'mv',
+        'getattr'  : 'ga',
+        'setattr'  : 'sa',
+        'getxattr' : 'gx',
+        'setxattr' : 'sx',
+        'statfs'   : 'st',
+        'sync'     : 'sy',
+        'read'     : 'rd',
+        'write'    : 'wr',
+        'punch'    : 'pu',
+        'migrate'  : 'mi',
+        'fallocate': 'fa',
+        'destroy'  : 'dt',
+        'get_info' : 'gi',
+        'set_info' : 'si',
+        'quotactl' : 'qc',
+        'prealloc' : 'pa'
+    }
+
     misc_keys = {
         'sw' : 'sampling_window',
         'sn' : 'snapshot_time',
@@ -222,31 +251,62 @@ class JobStatsParser:
         self.reference_snaptime = None
         self.reference = {}
 
-    def topdb(self, total_ops, query_time):
+    def topdb(self, total_ops, jobs, query_time): # pylint: disable=too-many-locals,too-many-branches,too-many-statements
         '''
         Class to upate/read the ever highest ops rate picks
         '''
-        newtopops = {}
-
-        # Workaround as on some systems the poped items
-        # are removed globally and others they are not.
-        #temp_ops = deepcopy(total_ops)
-
-        stamped_ops = {}
-        for ops in total_ops.keys():
-            stamped_ops.update({ops: {"rate": total_ops[ops], "timestamp": query_time}})
+        topdbdict = {"top_job_per_op": {}, "top_ops": {}}
 
         try:
             with open(self.args.totalratefile, 'rb') as picf:
                 oldjobs = pickle.load(picf)
         except FileNotFoundError:
             with open(self.args.totalratefile, 'wb') as picf:
-                pickle.dump(stamped_ops, picf, pickle.HIGHEST_PROTOCOL)
+                pickle.dump(topdbdict, picf, pickle.HIGHEST_PROTOCOL)
             return False
 
-        for ops in oldjobs.keys():
-            oldops = oldjobs[ops]["rate"]
-            oldts = oldjobs[ops]["timestamp"]
+        try:
+            top_jop_op = oldjobs["top_job_per_op"]
+        except KeyError:
+            top_jop_op = {}
+
+        for opkey in self.op_keys:
+            longopkey = self.op_keys[opkey]
+
+            try:
+                top_jop_op[longopkey]
+            except KeyError:
+                top_jop_op.update({longopkey: {}})
+
+            for jobkey in jobs.keys():
+                if longopkey in jobs[jobkey].keys():
+                    try:
+                        toprate = top_jop_op[longopkey][longopkey]
+                    except KeyError:
+                        top_jop_op[longopkey] = jobs[jobkey]
+                        top_jop_op[longopkey].update({"timestamp": query_time})
+                        continue
+
+                    rate = jobs[jobkey][longopkey]
+
+                    if toprate < rate:
+                        top_jop_op[longopkey] = jobs[jobkey]
+                        top_jop_op[longopkey].update({"timestamp": query_time})
+
+        topdbdict["top_job_per_op"] = top_jop_op
+
+        # -----------------------------------------------------------------------------------------
+
+        newtopops = {}
+        stamped_ops = {}
+
+        for ops in total_ops.keys():
+            stamped_ops.update({ops: {"rate": total_ops[ops], "timestamp": query_time}})
+
+        print(oldjobs.keys())
+        for ops in oldjobs["top_ops"].keys():
+            oldops = oldjobs["top_ops"][ops]["rate"]
+            oldts = oldjobs["top_ops"][ops]["timestamp"]
 
             try:
                 newops = stamped_ops[ops]["rate"]
@@ -265,13 +325,16 @@ class JobStatsParser:
         if stamped_ops:
             newtopops.update(stamped_ops)
 
+
+        topdbdict["top_ops"] = newtopops
+
         with open(self.args.totalratefile, 'wb') as picf:
-            pickle.dump(newtopops, picf, pickle.HIGHEST_PROTOCOL)
+            pickle.dump(topdbdict, picf, pickle.HIGHEST_PROTOCOL)
 
-        return newtopops
+        return topdbdict
 
 
-    def rate_calc(self, jobs, query_time, timestamp_dict): # pylint: disable=too-many-branches
+    def rate_calc(self, jobs, query_time, timestamp_dict): # pylint: disable=too-many-branches,too-many-locals
         '''
         Class to calculate the rate between two queries
         '''
@@ -282,7 +345,9 @@ class JobStatsParser:
             self.reference = jobs
             self.reference_time = query_time
             self.reference_snaptime = timestamp_dict
+            query_duration = 0
         else:
+            query_duration = query_time - self.reference_time
             for job_id in self.reference:
                 jobrate[job_id] = {}
                 job_sampling_window[job_id] = {}
@@ -325,7 +390,7 @@ class JobStatsParser:
             self.reference_snaptime = timestamp_dict
             self.reference_time = query_time
 
-        return jobrate, job_sampling_window
+        return jobrate, job_sampling_window, query_duration
 
 
     def pct_calc(self, jobs, total_ops):
@@ -529,7 +594,12 @@ class JobStatsParser:
         print('}')
 
 
-    def print_top_jobs(self, top_jobs, total_jobs, count, job_sampling_window, query_time): # pylint: disable=too-many-arguments,unused-argument
+    def print_top_jobs(self,
+                        top_jobs,
+                        total_jobs,
+                        count,
+                        job_sampling_window,
+                        query_time, query_duration): # pylint: disable=too-many-arguments,unused-argument,too-many-arguments
         '''
         print top_jobs in YAML
         '''
@@ -541,8 +611,8 @@ class JobStatsParser:
         print('---') # mark the begining of YAML doc in stream
         #print(f'timestamp: {int(time.time())}')
         print(f'timestamp: {times}')
-        #if self.args.rate or self.args.difference:
-        #    print(f'sample_duration: {timevalue}')
+        if self.args.rate or self.args.difference:
+            print(f'query_duration: {query_duration}')
         print(f'servers_queried: {len(self.argparser.serverlist)}')
         print(f'total_jobs: {total_jobs}')
         if self.args.percent:
@@ -573,7 +643,7 @@ class JobStatsParser:
             if self.args.fullname:
                 op_name = key
             else:
-                op_name = (list(self.op_keys.keys())[list(self.op_keys.values()).index(key)])
+                op_name = self.op_keys_rev[key]
 #            print(f'- {opname + ":" : <10}{ops[key]}')
             print(f'- {op_name + ":" : <10} {{rate: {str(ops[key])}}}')
 
@@ -598,10 +668,53 @@ class JobStatsParser:
                 op_name = key
                 ts_name = "timestamp"
             else:
-                op_name = (list(self.op_keys.keys())[list(self.op_keys.values()).index(key)])
+                op_name = self.op_keys_rev[key]
                 ts_name = "ts"
             print(f'- {op_name + ":" : <10} {{rate: {str(rate) + "," : <10} {ts_name}: {times}}}')
 
+    def print_total_ops_logged_metric_job(self, ops): # pylint: disable=too-many-branches
+        '''
+        print single job info for highest op rate logged
+        '''
+        for op_key in ops.keys():
+            if self.args.fullname:
+                op_name = op_key
+                ts_name = "timestamp"
+            else:
+                # op_name =(list(self.op_keys.keys())[list(self.op_keys.values()).index(op_key)])
+                op_name = self.op_keys_rev[op_key]
+                ts_name = "ts"
+
+            num_items = len(ops[op_key].keys()) - 2
+            counter = 1
+
+
+            if not "job_id" in ops[op_key]:
+                continue
+
+            print(f'- {op_name + ":" : <10} {{', end='')
+            # print(f'- {op_name + ":" : <10} {{job_id: {ops[op_key]["job_id"]}, ', end='')
+
+            #print(f'- {op_name}:', end='')
+            for item in ops[op_key].keys():
+                if item in self.op_keys.values():
+                    if self.args.fullname:
+                        item_name = self.op_keys_rev[item]
+                    else:
+                        item_name = item
+                    if counter == 1:
+                        print(f'{item_name}: {ops[op_key][item]}, ', end='')
+                    elif counter > 1 and counter < num_items:
+                        print(f'{item_name}: {ops[op_key][item]}, ', end='')
+                    else:
+                        if self.args.humantime:
+                            times = time.strftime("%a %d %b %Y %H-%M-%S +0000",
+                                        time.localtime(ops[op_key]["timestamp"]))
+                        else:
+                            times = ops[op_key]["timestamp"]
+                        print(f'{item_name}: {ops[op_key][item]}, {ts_name}: {times}, job_id: {ops[op_key]["job_id"]}', end='')
+                    counter += 1
+            print('}')
 
     def print_total_ops(self, total_ops): # pylint: disable=too-many-arguments
         '''
@@ -620,7 +733,10 @@ class JobStatsParser:
         print total highest ops ever in YAML
         '''
         print('total_op_rate_logged:')
-        self.print_total_ops_logged_metric(total_ops_logged)
+        self.print_total_ops_logged_metric(total_ops_logged["top_ops"])
+
+        print('top_job_per_op_logged:')
+        self.print_total_ops_logged_metric_job(total_ops_logged["top_job_per_op"])
         print('...') # mark the end of YAML doc in stream
 
     def run_once_par(self, query_type): # pylint: disable=too-many-locals,too-many-branches
@@ -671,20 +787,26 @@ class JobStatsParser:
         total_jobs = len(set(jobs))
 
         if (self.args.rate or self.args.difference) and not self.reference:
-            jobs, job_sampling_window = self.rate_calc(jobs, query_time, timestamp_dict)
+            jobs, job_sampling_window, query_duration = self.rate_calc(jobs,
+                                                                        query_time,
+                                                                        timestamp_dict)
         elif (self.args.rate or self.args.difference) and self.reference:
-            jobs, job_sampling_window = self.rate_calc(jobs, query_time, timestamp_dict)
+            jobs, job_sampling_window, query_duration = self.rate_calc(jobs,
+                                                                        query_time,
+                                                                        timestamp_dict)
             if self.args.total or self.args.percent or self.args.totalrate:
                 total_ops = self.total_calc(jobs)
             if self.args.totalrate and self.args.total:
-                top_ops_ever = self.topdb(total_ops, query_time)
+                top_ops_ever = self.topdb(total_ops, jobs, query_time)
             if self.args.percent:
                 jobs = self.pct_calc(jobs, total_ops)
             top_jobs = self.pick_top_jobs(jobs, self.args.count)
             self.print_top_jobs(top_jobs,
                                 total_jobs,
                                 self.args.count,
-                                job_sampling_window, query_time)
+                                job_sampling_window,
+                                query_time,
+                                query_duration)
             if self.args.total:
                 self.print_total_ops(total_ops)
             if self.args.totalrate and top_ops_ever:
@@ -695,7 +817,7 @@ class JobStatsParser:
             if self.args.percent:
                 jobs = self.pct_calc(jobs, total_ops)
             top_jobs = self.pick_top_jobs(jobs, self.args.count)
-            self.print_top_jobs(top_jobs, total_jobs, self.args.count, 0, query_time)
+            self.print_top_jobs(top_jobs, total_jobs, self.args.count, 0, query_time, 0)
             if self.args.total:
                 self.print_total_ops(total_ops)
 
