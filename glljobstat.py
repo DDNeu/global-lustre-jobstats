@@ -15,6 +15,7 @@ import configparser
 from pathlib import Path
 from getpass import getpass
 from os.path import expanduser
+from collections import Counter
 from multiprocessing import Process, Queue
 import urllib3
 
@@ -247,6 +248,7 @@ class JobStatsParser:
         self.args = None
         self.argparser = None
         self.hosts_param = None
+        self.osts_mdts = None
         self.reference_time = None
         self.reference_snaptime = None
         self.reference = {}
@@ -594,12 +596,12 @@ class JobStatsParser:
         print('}')
 
 
-    def print_top_jobs(self,
+    def print_top_jobs(self, # pylint: disable=too-many-arguments
                         top_jobs,
                         total_jobs,
                         count,
                         job_sampling_window,
-                        query_time, query_duration): # pylint: disable=too-many-arguments,unused-argument,too-many-arguments
+                        query_time, query_duration):
         '''
         print top_jobs in YAML
         '''
@@ -614,6 +616,8 @@ class JobStatsParser:
         if self.args.rate or self.args.difference:
             print(f'query_duration: {query_duration}')
         print(f'servers_queried: {len(self.argparser.serverlist)}')
+        print(f'osts_queried: {self.osts_mdts["obdfilter"]}')
+        print(f'mdts_queried: {self.osts_mdts["mdt"]}')
         print(f'total_jobs: {total_jobs}')
         if self.args.percent:
             print(f'top_{count}_job_pct:', end="")
@@ -712,7 +716,8 @@ class JobStatsParser:
                                         time.localtime(ops[op_key]["timestamp"]))
                         else:
                             times = ops[op_key]["timestamp"]
-                        print(f'{item_name}: {ops[op_key][item]}, {ts_name}: {times}, job_id: {ops[op_key]["job_id"]}', end='')
+                        print(f'{item_name}: {ops[op_key][item]}, {ts_name}: {times}, ', end='')
+                        print(f'job_id: {ops[op_key]["job_id"]}', end='')
                     counter += 1
             print('}')
 
@@ -942,10 +947,10 @@ class JobStatsParser:
         self.argparser.run()
         self.args = self.argparser.args
 
-        #self.reference = {}
-        #self.reference_time = ""
-
         self.hosts_param = self.get_data("param")
+        self.osts_mdts = Counter([item.split('.')[0] for
+                        sublist in self.hosts_param.values() for
+                        item in sublist])
 
         i = 0
         try:
