@@ -16,7 +16,7 @@ from pathlib import Path
 from getpass import getpass
 from os.path import expanduser
 from collections import Counter
-from multiprocessing import Process, Queue
+from multiprocessing import Process, Queue, cpu_count
 import urllib3
 
 warnings.filterwarnings(action='ignore',module='.*paramiko.*')
@@ -95,6 +95,8 @@ class ArgParser: # pylint: disable=too-few-public-methods,too-many-instance-attr
                             help='Show top jobs in percentage to total ops')
         parser.add_argument('-ht', '--humantime', dest='humantime', action='store_true',
                             help='Show human readable time instead of timestamp')
+        parser.add_argument('-np', '--num_proc', dest="num_proc", type=int, default=cpu_count(),
+                            help=f'Number of processes to spawn (default {cpu_count()}).')
 
         group = parser.add_argument_group('Mutually exclusive options')
         group_ex = group.add_mutually_exclusive_group()
@@ -305,7 +307,6 @@ class JobStatsParser:
         for ops in total_ops.keys():
             stamped_ops.update({ops: {"rate": total_ops[ops], "timestamp": query_time}})
 
-        print(oldjobs.keys())
         for ops in oldjobs["top_ops"].keys():
             oldops = oldjobs["top_ops"][ops]["rate"]
             oldts = oldjobs["top_ops"][ops]["timestamp"]
@@ -620,9 +621,9 @@ class JobStatsParser:
         print(f'mdts_queried: {self.osts_mdts["mdt"]}')
         print(f'total_jobs: {total_jobs}')
         if self.args.percent:
-            print(f'top_{count}_job_pct:', end="")
+            print(f'top_{count}_job_operations_in_percent_to_total_operations:', end="")
         elif self.args.rate or self.args.difference:
-            print(f'top_{count}_job_rates:', end="")
+            print(f'top_{count}_job_operation_rates_during_query_windows:', end="")
         else:
             print(f'top_{count}_jobs:', end="")
         if not top_jobs:
@@ -726,9 +727,9 @@ class JobStatsParser:
         print total ops in YAML
         '''
         if self.args.rate:
-            print('total_op_rate:')
+            print('total_rate_per_operation_during_query_window:')
         else:
-            print('total_ops:')
+            print('total_operations:')
         self.print_metric(total_ops)
         if not self.args.totalrate:
             print('...') # mark the end of YAML doc in stream
@@ -737,10 +738,10 @@ class JobStatsParser:
         '''
         print total highest ops ever in YAML
         '''
-        print('total_op_rate_logged:')
+        print('highest_rate_per_operation_in_logfile:')
         self.print_total_ops_logged_metric(total_ops_logged["top_ops"])
 
-        print('top_job_per_op_logged:')
+        print('job_with_hightest_rate_per_operation_in_logfile:')
         self.print_total_ops_logged_metric_job(total_ops_logged["top_job_per_op"])
         print('...') # mark the end of YAML doc in stream
 
@@ -760,6 +761,7 @@ class JobStatsParser:
         #parser_start = time.time()
         objs = []
         procs = []
+        np = self.args.num_proc
         proc_q = Queue()
 
         try:
@@ -870,9 +872,14 @@ class JobStatsParser:
                     ssh_pkey = paramiko.Ed25519Key.from_private_key_file(
                         filename=self.argparser.key)
 
-                ssh.connect(hostname=host,
-                            username=self.argparser.user,
-                            pkey=ssh_pkey)
+                try:
+                    ssh.connect(hostname=host,
+                                username=self.argparser.user,
+                                pkey=ssh_pkey)
+                except paramiko.ssh_exception.NoValidConnectionsError as exn:
+                    print(f'Exception in ssh.connect(hostname={host})')
+                    print(exn)
+                    return f'Exception in ssh.connect(hostname={host})'
 
             try:
                 stdin, stdout, stderr = ssh.exec_command(cmd)
@@ -896,8 +903,7 @@ class JobStatsParser:
         except KeyboardInterrupt:
             print('Received KeyboardInterrupt in run()')
             sys.exit()
-
-
+        
     def get_data(self, query_type):
         '''
         Spawn SSH connections to each server in parallel to gather data
@@ -908,6 +914,7 @@ class JobStatsParser:
             hostdata = []
 
         procs = []
+        np = self.args.num_proc
         proc_q = Queue()
 
         try:
