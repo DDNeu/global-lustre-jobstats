@@ -18,8 +18,8 @@ parser = argparse.ArgumentParser(
 
 parser.add_argument('-nh', '--num-hosts', dest="num_hosts", type=int, default=10,
                     help='Number of hosts to ssh to (default 10).')
-parser.add_argument('-np', '--num-proc', dest="num_proc", type=int, default=cpu_count(),
-                    help=f'Number of processes to spawn (default {cpu_count()}).')
+parser.add_argument('-np', '--num-proc', dest="num_proc", type=int, default=2,
+                    help=f'Number of processes to spawn (default 2).')
 parser.add_argument('-st', '--sleep-time', dest="sleep_time", type=int, default=10,
                     help='Time of imulated work in seconds (default 10).')
 
