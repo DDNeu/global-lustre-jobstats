@@ -16,7 +16,7 @@ from pathlib import Path
 from getpass import getpass
 from os.path import expanduser
 from collections import Counter
-from multiprocessing import Process, Pool, Manager, cpu_count
+from multiprocessing import Pool, cpu_count
 import urllib3
 
 warnings.filterwarnings(action='ignore',module='.*paramiko.*')
@@ -440,11 +440,11 @@ class JobStatsParser:
         return total_dict
 
 
-    def parse_single_job_stats_beo(self, queue, data): # pylint: disable=too-many-locals
+    def parse_single_job_stats_beo(self, data): # pylint: disable=too-many-locals
         '''
         parse it manually into a dict
         '''
-        data_iterable = iter(data[0].splitlines())
+        data_iterable = iter(data.splitlines())
         jobstats_dict = {"job_stats": []}
 
         for line in data_iterable:
@@ -498,7 +498,7 @@ class JobStatsParser:
                 jobstats_dict["job_stats"].append(job_dict)
                 break
 
-        queue.put(jobstats_dict)
+        return jobstats_dict
 
 
     def merge_job(self, jobs, job, timestamp_dict):
@@ -750,6 +750,7 @@ class JobStatsParser:
     def run_once_par(self, query_type): # pylint: disable=too-many-locals,too-many-branches
         '''
         scan/parse/aggregate/print top jobs in given job_stats pattern/path(s)
+        https://stackoverflow.com/a/77033777/15349369
         '''
         jobs = {}
         timestamp_dict = {}
@@ -761,29 +762,13 @@ class JobStatsParser:
         #ssh_time = ssh_stop - ssh_start
 
         #parser_start = time.time()
-        objs = []
-        procs = []
-        num_p = self.args.num_proc
-        mngr = Manager()
-        proc_q = mngr.Queue()
-        proc_p = Pool(num_p)
 
         try:
-            for data in statsdata:
-                proc = Process(target=self.parse_single_job_stats_beo, args=(proc_q, [data]))
-                procs.append(proc)
-                proc.start()
-
-            readers = []
-            for index, proc in enumerate(procs):
-                readers.append(proc_p.apply_async(self.reader, (index, proc_q)))
-
-            for rdr in readers:
-                ret = rdr.get() # blocking
-                objs.append(ret)
+            with Pool(processes=self.args.num_proc) as proc_pool:
+                objs = list(proc_pool.imap_unordered(self.parse_single_job_stats_beo, statsdata))
 
         except Exception as exn: # pylint: disable=bare-except,broad-exception-caught
-            print(exn)
+            print("run_once_par()\n", exn)
             sys.exit()
 
         #parser_stop = time.time()
@@ -850,10 +835,12 @@ class JobStatsParser:
                     raise
 
 
-    def ssh_get(self, queue, host, query_type, cmd): #pylint: disable=inconsistent-return-statements
+    def ssh_get(self, arg_list): #pylint: disable=inconsistent-return-statements
         '''
         SSH to all servers and execute lctl command
         '''
+        host, query_type, cmd = arg_list
+
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
@@ -903,61 +890,36 @@ class JobStatsParser:
             output = stdout.read().decode(encoding='UTF-8')
 
             if query_type == "param":
-                hostparam = {host: output.split()}
-                queue.put(hostparam)
+                hostparam = (host, output.split())
+                return hostparam
             if query_type == "stats":
-                queue.put(output)
+                return output
 
         except KeyboardInterrupt:
             print('Received KeyboardInterrupt in run()')
             sys.exit()
 
-    def reader(self, index, proc_q):
-        message = proc_q.get()
-        return message
 
     def get_data(self, query_type):
         '''
         Spawn SSH connections to each server in parallel to gather data
+        https://stackoverflow.com/a/77033777/15349369
         '''
-        if query_type == "param":
-            hostdata = {}
-        if query_type == "stats":
-            hostdata = []
-
-        procs = []
-        num_p = self.args.num_proc
-        mngr = Manager()
-        proc_q = mngr.Queue()
-        proc_p = Pool(num_p)
-
-
         try:
-            for host in self.argparser.serverlist:
+            with Pool(processes=self.args.num_proc) as proc_pool:
                 if query_type == "param":
-                    cmd = f'lctl list_param {self.args.param}'
-                    proc = Process(target=self.ssh_get, args=(proc_q, host, query_type, cmd))
-                    procs.append(proc)
-                    proc.start()
-                if query_type == "stats":
-                    for param in self.hosts_param[host]:
-                        cmd = f'lctl get_param -n {param}'
-                        proc = Process(target=self.ssh_get, args=(proc_q, host, query_type, cmd))
-                        procs.append(proc)
-                        proc.start()
+                    map_args = [[host, query_type, f'lctl list_param {self.args.param}'] for
+                                host in self.argparser.serverlist]
+                    hostdata = dict(proc_pool.imap_unordered(self.ssh_get, map_args))
 
-            readers = []
-            for index, proc in enumerate(procs):
-                readers.append(proc_p.apply_async(self.reader, (index, proc_q)))
-
-            for rdr in readers:
-                ret = rdr.get() # blocking
-                if query_type == "param":
-                    hostdata.update(ret)
                 if query_type == "stats":
-                    hostdata.append(ret)
+                    map_args = [[host, query_type, f'lctl get_param -n {param}'] for
+                                host in self.argparser.serverlist for
+                                param in self.hosts_param[host]]
+                    hostdata = list(proc_pool.imap_unordered(self.ssh_get, map_args))
+
         except Exception as exn: # pylint: disable=bare-except,broad-exception-caught
-            print(exn)
+            print("get_data()\n", exn)
             sys.exit()
         else:
             return hostdata
