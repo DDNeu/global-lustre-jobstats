@@ -16,7 +16,7 @@ from pathlib import Path
 from getpass import getpass
 from os.path import expanduser
 from collections import Counter
-from multiprocessing import Process, Queue, cpu_count
+from multiprocessing import Process, Pool, Manager, cpu_count
 import urllib3
 
 warnings.filterwarnings(action='ignore',module='.*paramiko.*')
@@ -622,8 +622,10 @@ class JobStatsParser:
         print(f'total_jobs: {total_jobs}')
         if self.args.percent:
             print(f'top_{count}_job_operations_in_percent_to_total_operations:', end="")
-        elif self.args.rate or self.args.difference:
+        elif self.args.rate:
             print(f'top_{count}_job_operation_rates_during_query_windows:', end="")
+        elif self.args.difference:
+            print(f'top_{count}_job_operation_difference_between_query_windows:', end="")
         else:
             print(f'top_{count}_jobs:', end="")
         if not top_jobs:
@@ -704,9 +706,9 @@ class JobStatsParser:
             for item in ops[op_key].keys():
                 if item in self.op_keys.values():
                     if self.args.fullname:
-                        item_name = self.op_keys_rev[item]
-                    else:
                         item_name = item
+                    else:
+                        item_name = self.op_keys_rev[item]
                     if counter == 1:
                         print(f'{item_name}: {ops[op_key][item]}, ', end='')
                     elif counter > 1 and counter < num_items:
@@ -761,19 +763,25 @@ class JobStatsParser:
         #parser_start = time.time()
         objs = []
         procs = []
-        np = self.args.num_proc
-        proc_q = Queue()
+        num_p = self.args.num_proc
+        mngr = Manager()
+        proc_q = mngr.Queue()
+        proc_p = Pool(num_p)
 
         try:
             for data in statsdata:
                 proc = Process(target=self.parse_single_job_stats_beo, args=(proc_q, [data]))
                 procs.append(proc)
                 proc.start()
-            for proc in procs:
-                ret = proc_q.get() # blocking
+
+            readers = []
+            for index, proc in enumerate(procs):
+                readers.append(proc_p.apply_async(self.reader, (index, proc_q)))
+
+            for rdr in readers:
+                ret = rdr.get() # blocking
                 objs.append(ret)
-            for proc in procs:
-                proc.join()
+
         except Exception as exn: # pylint: disable=bare-except,broad-exception-caught
             print(exn)
             sys.exit()
@@ -903,7 +911,11 @@ class JobStatsParser:
         except KeyboardInterrupt:
             print('Received KeyboardInterrupt in run()')
             sys.exit()
-        
+
+    def reader(self, index, proc_q):
+        message = proc_q.get()
+        return message
+
     def get_data(self, query_type):
         '''
         Spawn SSH connections to each server in parallel to gather data
@@ -914,8 +926,11 @@ class JobStatsParser:
             hostdata = []
 
         procs = []
-        np = self.args.num_proc
-        proc_q = Queue()
+        num_p = self.args.num_proc
+        mngr = Manager()
+        proc_q = mngr.Queue()
+        proc_p = Pool(num_p)
+
 
         try:
             for host in self.argparser.serverlist:
@@ -931,14 +946,16 @@ class JobStatsParser:
                         procs.append(proc)
                         proc.start()
 
-            for proc in procs:
-                ret = proc_q.get() # blocking
+            readers = []
+            for index, proc in enumerate(procs):
+                readers.append(proc_p.apply_async(self.reader, (index, proc_q)))
+
+            for rdr in readers:
+                ret = rdr.get() # blocking
                 if query_type == "param":
                     hostdata.update(ret)
                 if query_type == "stats":
                     hostdata.append(ret)
-            for proc in procs:
-                proc.join()
         except Exception as exn: # pylint: disable=bare-except,broad-exception-caught
             print(exn)
             sys.exit()
