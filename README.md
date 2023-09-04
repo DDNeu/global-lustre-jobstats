@@ -21,10 +21,12 @@ A proper tool would allow filtering for specific OST/MDTs etc... patches welcome
 ### Help
 ```
 (lljobstat) [root@mXossq1 bolausson]# ./glljobstat.py --help
-usage: lljobstat [-h] [-c COUNT] [-i INTERVAL] [-n REPEATS] [--param PARAM]
-                 [-o] [-m] [-s SERVERS] [--fullname] [--no-fullname]
-                 [-f FILTER] [-fm] [-l JOBID_LENGTH] [-t] [-tr]
-                 [-trf TOTALRATEFILE] [-p] [-d | -r]
+usage: glljobstat.py [-h] [-c COUNT] [-i INTERVAL] [-n REPEATS]
+                     [--param PARAM] [-o] [-m] [-s SERVERS] [--fullname]
+                     [--no-fullname] [-f FILTER] [-fm] [-l JOBID_LENGTH] [-t]
+                     [-tr] [-trf TOTALRATEFILE] [-p] [-ht] [-nps NUM_PROC_SSH]
+                     [-npp NUM_PROC_DATA] [-ncs NUM_CHUNK_SSH]
+                     [-ncp NUM_CHUNK_DATA] [-v] [-d | -r]
 
 List top jobs.
 
@@ -55,8 +57,24 @@ optional arguments:
                         created and keep track of the highest rate ever
   -trf TOTALRATEFILE, --totalratefile TOTALRATEFILE
                         Path to a pickle file which will keep track of the
-                        higest rate (default /root/.glljobstat.pickle)
+                        higest rate (default /root/.glljobstatdb.pickle)
   -p, --percent         Show top jobs in percentage to total ops
+  -ht, --humantime      Show human readable time instead of timestamp
+  -nps NUM_PROC_SSH, --num_proc_ssh NUM_PROC_SSH
+                        Number of parallel SSH connections (default cpu count:
+                        20).
+  -npp NUM_PROC_DATA, --num_proc_data NUM_PROC_DATA
+                        Number of parallel data parsing tasks (default cpu
+                        count: 20).
+  -ncs NUM_CHUNK_SSH, --num_chunk_ssh NUM_CHUNK_SSH
+                        Chops the number of parallel SSH jobs into a number of
+                        chunks which it submits to the process pool as
+                        separate tasks (default: 1)
+  -ncp NUM_CHUNK_DATA, --num_chunk_data NUM_CHUNK_DATA
+                        Chops the number of parallel data pasing tasks into a
+                        number of chunks which it submits to the process pool
+                        as separate tasks (default: 1)
+  -v, --verbose         Show some debug and timing information
 
 Mutually exclusive options:
   -d, --dif             Show change in counters between two queries
