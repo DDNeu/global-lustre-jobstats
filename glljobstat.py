@@ -95,8 +95,25 @@ class ArgParser: # pylint: disable=too-few-public-methods,too-many-instance-attr
                             help='Show top jobs in percentage to total ops')
         parser.add_argument('-ht', '--humantime', dest='humantime', action='store_true',
                             help='Show human readable time instead of timestamp')
-        parser.add_argument('-np', '--num_proc', dest="num_proc", type=int, default=cpu_count(),
-                            help=f'Number of processes to spawn (default {cpu_count()}).')
+        parser.add_argument('-nps', '--num_proc_ssh', dest="num_proc_ssh", type=int,
+                            default=cpu_count(),
+                            help=f"""Number of parallel SSH connections
+                            (default cpu count: {cpu_count()}).""")
+        parser.add_argument('-npp', '--num_proc_data', dest="num_proc_data", type=int,
+                            default=cpu_count(),
+                            help=f"""Number of parallel data parsing tasks
+                            (default cpu count: {cpu_count()}).""")
+        parser.add_argument('-ncs', '--num_chunk_ssh', dest="num_chunk_ssh", type=int,
+                            default=1,
+                            help="""Chops the number of parallel SSH jobs into a number of chunks
+                            which it submits to the process pool as separate tasks (default: 1)""")
+        parser.add_argument('-ncp', '--num_chunk_data', dest="num_chunk_data", type=int,
+                            default=1,
+                            help="""Chops the number of parallel data pasing tasks into a number
+                            of chunks which it submits to the process pool as separate tasks
+                            (default: 1)""")
+        parser.add_argument('-v', '--verbose', dest='verb', action='store_true',
+                            help='Show some debug and timing information')
 
         group = parser.add_argument_group('Mutually exclusive options')
         group_ex = group.add_mutually_exclusive_group()
@@ -597,7 +614,7 @@ class JobStatsParser:
         print('}')
 
 
-    def print_top_jobs(self, # pylint: disable=too-many-arguments
+    def print_top_jobs(self, # pylint: disable=too-many-arguments,too-many-branches
                         top_jobs,
                         total_jobs,
                         count,
@@ -747,35 +764,53 @@ class JobStatsParser:
         self.print_total_ops_logged_metric_job(total_ops_logged["top_job_per_op"])
         print('...') # mark the end of YAML doc in stream
 
+
+    def init_worker(self):
+        '''
+        Gracefully handle CTRL-C (KeyboardInterrupt) in multiprocessing pool
+        '''
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        #signal.signal(signal.SIGINT, signal.default_int_handler)
+
+
     def run_once_par(self, query_type): # pylint: disable=too-many-locals,too-many-branches
         '''
         scan/parse/aggregate/print top jobs in given job_stats pattern/path(s)
-        https://stackoverflow.com/a/77033777/15349369
         '''
         jobs = {}
         timestamp_dict = {}
-
         query_time = int(time.time())
-        #ssh_start = time.time()
-        statsdata = self.get_data(query_type)
-        #ssh_stop = time.time()
-        #ssh_time = ssh_stop - ssh_start
 
-        #parser_start = time.time()
+        if self.args.verb:
+            ssh_start = time.time()
+
+        statsdata = self.get_data(query_type)
+
+        if self.args.verb:
+            ssh_stop = time.time()
+            ssh_time = ssh_stop - ssh_start
+            parser_start = time.time()
 
         try:
-            with Pool(processes=self.args.num_proc) as proc_pool:
-                objs = list(proc_pool.imap_unordered(self.parse_single_job_stats_beo, statsdata))
+            with Pool(processes=self.args.num_proc_data,
+                    initializer=self.init_worker) as proc_pool:
+                objs = list(proc_pool.imap_unordered(func=self.parse_single_job_stats_beo,
+                                                    iterable=statsdata,
+                                                    chunksize=self.args.num_chunk_data))
 
-        except Exception as exn: # pylint: disable=bare-except,broad-exception-caught
-            print("run_once_par()\n", exn)
+        except KeyboardInterrupt:
+            if self.args.verb:
+                print("Caught KeyboardInterrupt in run_once_par(), terminating")
+            print()
             sys.exit()
 
-        #parser_stop = time.time()
-        #parser_time = parser_stop - parser_start
-
-        #print(f"SSH time         : {ssh_time}")
-        #print(f"Parser time      : {parser_time}")
+        if self.args.verb:
+            parser_stop = time.time()
+            parser_time = parser_stop - parser_start
+            loop_time = parser_stop - ssh_start
+            print(f"SSH time         : {ssh_time}")
+            print(f"Parser time      : {parser_time}")
+            print(f"Loop time        : {loop_time}")
 
         for obj in objs:
             if obj['job_stats'] is None:
@@ -872,20 +907,20 @@ class JobStatsParser:
                                 username=self.argparser.user,
                                 pkey=ssh_pkey)
                 except paramiko.ssh_exception.NoValidConnectionsError as exn:
-                    print(f'Exception in ssh.connect(hostname={host})')
-                    print(exn)
-                    return f'Exception in ssh.connect(hostname={host})'
+                    print(f'Exception in ssh.connect(hostname={host})\n', exn)
+                    raise
 
             try:
                 stdin, stdout, stderr = ssh.exec_command(cmd)
             except Exception as exn: # pylint: disable=bare-except,broad-exception-caught
                 ssh.close()
-                print(exn)
-                error = stderr.read().decode(encoding='UTF-8') # pylint: disable=used-before-assignment
-                print(error)
-                stdinput = stdin.read().decode(encoding='UTF-8') # pylint: disable=used-before-assignment
-                print(stdinput)
-                return "Exception running ssh.exec_command"
+                if self.args.verb:
+                    print(f"Exception running ssh.exec_command({cmd})\n", exn)
+                    error = stderr.read().decode(encoding='UTF-8') # pylint: disable=used-before-assignment
+                    print(error)
+                    stdinput = stdin.read().decode(encoding='UTF-8') # pylint: disable=used-before-assignment
+                    print(stdinput)
+                raise
 
             output = stdout.read().decode(encoding='UTF-8')
 
@@ -896,30 +931,38 @@ class JobStatsParser:
                 return output
 
         except KeyboardInterrupt:
-            print('Received KeyboardInterrupt in run()')
+            if self.args.verb:
+                print("Caught KeyboardInterrupt in ssh_get(), terminating")
+            print()
             sys.exit()
 
 
     def get_data(self, query_type):
         '''
         Spawn SSH connections to each server in parallel to gather data
-        https://stackoverflow.com/a/77033777/15349369
         '''
         try:
-            with Pool(processes=self.args.num_proc) as proc_pool:
+            with Pool(processes=self.args.num_proc_ssh,
+                    initializer=self.init_worker) as proc_pool:
                 if query_type == "param":
                     map_args = [[host, query_type, f'lctl list_param {self.args.param}'] for
                                 host in self.argparser.serverlist]
-                    hostdata = dict(proc_pool.imap_unordered(self.ssh_get, map_args))
+                    hostdata = dict(proc_pool.imap_unordered(func=self.ssh_get,
+                                                            iterable=map_args,
+                                                            chunksize=self.args.num_chunk_ssh))
 
                 if query_type == "stats":
                     map_args = [[host, query_type, f'lctl get_param -n {param}'] for
                                 host in self.argparser.serverlist for
                                 param in self.hosts_param[host]]
-                    hostdata = list(proc_pool.imap_unordered(self.ssh_get, map_args))
+                    hostdata = list(proc_pool.imap_unordered(func=self.ssh_get,
+                                                            iterable=map_args,
+                                                            chunksize=self.args.num_chunk_ssh))
 
-        except Exception as exn: # pylint: disable=bare-except,broad-exception-caught
-            print("get_data()\n", exn)
+        except KeyboardInterrupt:
+            if self.args.verb:
+                print("Caught KeyboardInterrupt in get_data(), terminating")
+            print()
             sys.exit()
         else:
             return hostdata
@@ -938,6 +981,9 @@ class JobStatsParser:
                         sublist in self.hosts_param.values() for
                         item in sublist])
 
+        if self.args.verb:
+            total_time_start = time.time()
+
         i = 0
         try:
             while True:
@@ -947,9 +993,19 @@ class JobStatsParser:
                     break
                 time.sleep(self.args.interval)
         except KeyboardInterrupt:
-            print("\nReceived KeyboardInterrupt - stopping")
+            if self.args.verb:
+                print("Caught KeyboardInterrupt in Run(), terminating")
+            print()
             sys.exit()
 
+        if self.args.verb:
+            total_time_stop = time.time()
+            total_time = total_time_stop - total_time_start
+            print(f"Total runtime    : {total_time}")
 
 if __name__ == "__main__":
-    JobStatsParser().Run()
+    try:
+        JobStatsParser().Run()
+    except KeyboardInterrupt:
+        print()
+        sys.exit()
