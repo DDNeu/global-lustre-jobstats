@@ -19,7 +19,7 @@ glljobstat.py is based on [lljobstat](https://review.whamcloud.com/c/fs/lustre-r
 ## Examples
 ### Help
 ```
-(lljobstat) [root@mXossq1 bolausson]# ./glljobstat.py --help
+# ./glljobstat.py --help
 usage: glljobstat.py [-h] [-c COUNT] [-i INTERVAL] [-n REPEATS]
                      [--param PARAM] [-o] [-m] [-s SERVERS] [--fullname]
                      [--no-fullname] [-f FILTER] [-fm] [-l JOBID_LENGTH] [-t]
@@ -91,7 +91,7 @@ total_jobs: 2767
 top_3_jobs:
 - @0@oss4:               {ops: 478773574, op: 37190314, cl: 98493350, mn: 23866435, ga: 263190243, sa: 26543810, gx: 13705173, sx: 191485, st: 2609984, sy: 12445667, rd: 220880, wr: 301677, pu: 14556}
 - @0@oss1:               {ops: 440289919, op: 41416773, cl: 84440604, mn: 22883022, ga: 259247228, sa: 16171668, gx: 8088871, sx: 22344, st: 24, sy: 7681992, rd: 64480, wr: 269213, pu: 3700}
-- 4668060@92097@n2cn0173:  {ops: 425923932, op: 57816778, cl: 138823088, mn: 12731051, ul: 12730440, mk: 15, mv: 5535867, ga: 85197150, sa: 22196216, gx: 34617241, sx: 34, sy: 4544474, rd: 38719, wr: 6162951, pu: 45529908}
+- 4668060@92097@comp0173:  {ops: 425923932, op: 57816778, cl: 138823088, mn: 12731051, ul: 12730440, mk: 15, mv: 5535867, ga: 85197150, sa: 22196216, gx: 34617241, sx: 34, sy: 4544474, rd: 38719, wr: 6162951, pu: 45529908}
 ...
 ```
 ### Run twice, calculate rate, show top 3 jobs:
