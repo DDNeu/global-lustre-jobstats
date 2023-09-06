@@ -1,8 +1,15 @@
 #!/usr/bin/env python3
-
+# -*- coding: utf-8 -*-
 '''
-glljobstat command. Read job_stats files, parse and aggregate data of every
-job on multiple OSS/MDS via SSH using key or password, show top jobs and more
+-----------------------------------------------------------------------------
+glljobstat.py by Bjoern Olausson
+-----------------------------------------------------------------------------
+                          --- WARNING ---
+     This work is no official product and comes with no warranty!
+                         ----------------
+
+Read job_stats files, parse and aggregate data of every job on multiple
+OSS/MDS via SSH using key or password, show top jobs and more ...
 '''
 
 import sys
