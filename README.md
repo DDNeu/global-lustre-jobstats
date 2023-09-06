@@ -14,9 +14,6 @@ glljobstat.py is based on [lljobstat](https://review.whamcloud.com/c/fs/lustre-r
 * Config file for SSH, OSS/MDS, filter and other settings
 * Configure job_id name leght for pretty printing
 
-This is still very rudimental!
-A proper tool would allow filtering for specific OST/MDTs etc... patches welcome!
-
 ## Examples
 ### Help
 ```
@@ -80,156 +77,179 @@ Mutually exclusive options:
   -d, --dif             Show change in counters between two queries
   -r, --rate            Calculate the rate between two queries
 ```
-
-### Run twice, calculate rate, show top 10 jobs:
+### Run once, show top 3 jobs:
 ```
-(lljobstat) [root@mXoss1 bolausson]# ./glljobstat.py -n 2 -c 10 -r
+# ./glljobstat.py -n 1 -c 3
 ---
-timestamp: 1692372223
-sample_duration: 50
-top_jobs:
-- 4614100@92097@mXlcn0141: {ops: 1312, rd: 1303, wr: 9}
-- 4628146@39362@mXcn1144: {ops: 1008, op: 1, cl: 175, mn: 0, mk: 0, ga: 173, sa: 323, gx: 14, rd: 0, wr: 0, pu: 323}
-- 4629707@62567@mXcn0167: {ops: 817, op: 1, cl: 155, mn: 0, mk: 0, ga: 172, sa: 243, gx: 1, rd: 0, wr: 0, pu: 246}
-- 4628147@39362@mXcn1051: {ops: 761, op: 88, cl: 146, mn: 87, mk: 8, ga: 48, sa: 148, gx: 0, rd: 0, wr: 87, pu: 148}
-- 4614091@92097@mXlcn0142: {ops: 724, rd: 710, wr: 14}
-- 4601768@92097@mXcn0826: {ops: 615, op: 72, cl: 238, mn: 22, ul: 18, mk: 0, mv: 10, ga: 81, sa: 39, gx: 32, sx: 0, sy: 7, rd: 9, wr: 13, pu: 75}
-- 4604904@92097@mXcn0357: {ops: 609, op: 70, cl: 235, mn: 20, ul: 21, mk: 0, mv: 9, ga: 81, sa: 38, gx: 29, sx: 0, sy: 7, rd: 9, wr: 14, pu: 74}
-- 4613363@13313@mXgpu1223: {ops: 541, op: 110, cl: 110, mn: 0, ul: 0, mk: 0, ga: 212, sa: 0, gx: 0, rd: 109, wr: 0, pu: 0}
-- 4604912@92097@mXcn0358: {ops: 483, op: 53, cl: 173, mn: 18, ul: 18, mk: 0, mv: 6, ga: 64, sa: 26, gx: 26, sx: 0, sy: 7, rd: 9, wr: 16, pu: 65}
-- 4604911@92097@mXcn0358: {ops: 482, op: 56, cl: 196, mn: 14, ul: 12, mk: 0, mv: 9, ga: 61, sa: 32, gx: 22, sx: 0, sy: 0, rd: 6, wr: 15, pu: 59}
+timestamp: 1693989029
+servers_queried: 8
+osts_queried: 24
+mdts_queried: 8
+total_jobs: 2767
+top_3_jobs:
+- @0@oss4:               {ops: 478773574, op: 37190314, cl: 98493350, mn: 23866435, ga: 263190243, sa: 26543810, gx: 13705173, sx: 191485, st: 2609984, sy: 12445667, rd: 220880, wr: 301677, pu: 14556}
+- @0@oss1:               {ops: 440289919, op: 41416773, cl: 84440604, mn: 22883022, ga: 259247228, sa: 16171668, gx: 8088871, sx: 22344, st: 24, sy: 7681992, rd: 64480, wr: 269213, pu: 3700}
+- 4668060@92097@n2cn0173:  {ops: 425923932, op: 57816778, cl: 138823088, mn: 12731051, ul: 12730440, mk: 15, mv: 5535867, ga: 85197150, sa: 22196216, gx: 34617241, sx: 34, sy: 4544474, rd: 38719, wr: 6162951, pu: 45529908}
 ...
 ```
-### Run once, show top 10 jobs:
+### Run twice, calculate rate, show top 3 jobs:
 ```
-(lljobstat) [root@mXoss1 bolausson]# ./glljobstat_testing.py -n 1 -c 10
+# ./glljobstat.py -n 2 -c 3 -r
 ---
-timestamp: 1692222020
-top_jobs:
-- .0@mXoss4:       {ops: 450872221, op: 8985612, cl: 32847223, mn: 7556766, ga: 172015143, sa: 81582967, gx: 5249163, sx: 145539, st: 2610083, sy: 33185962, rd: 63191482, wr: 41084375, pu: 2417906}
-- .0@mXoss8:       {ops: 434625228, op: 5558162, cl: 22671631, mn: 4582361, ga: 74530019, sa: 90323151, gx: 4700613, sx: 26447, st: 51, sy: 35836738, rd: 127631483, wr: 64743521, pu: 4021051}
-- .0@mXoss7:       {ops: 381748393, op: 4711402, cl: 18595950, mn: 3751919, ga: 70785028, sa: 86948335, gx: 3856018, sx: 19001, st: 34, sy: 34442960, rd: 90835956, wr: 64186625, pu: 3615165}
-- .0@mXoss6:       {ops: 330148115, op: 2840716, cl: 9532521, mn: 1922084, ga: 66039267, sa: 82328690, gx: 2003026, sx: 6707, st: 32, sy: 32568903, rd: 77375199, wr: 52368778, pu: 3162192}
-- .0@mXoss3:       {ops: 322779945, op: 6862105, cl: 18542647, mn: 4678597, ga: 86738620, sa: 72757555, gx: 2337561, sx: 3175, st: 90, sy: 29707825, rd: 60881353, wr: 38174986, pu: 2095431}
-- .0@mXoss5:       {ops: 309103508, op: 2701993, cl: 9064226, mn: 1830268, ga: 63758336, sa: 79464149, gx: 1895714, sx: 4405, st: 33, sy: 31654271, rd: 69391782, wr: 46532996, pu: 2805335}
-- 4595658@13313@mXgpu1220: {ops: 277126435, op: 56221192, cl: 56269875, mn: 18, ul: 4, mk: 5, ga: 108150997, sa: 95905, gx: 100596, rd: 56088910, wr: 103028, pu: 95905}
-- 4595669@13313@mXgpu1231: {ops: 273840101, op: 55552600, cl: 55601128, mn: 18, ul: 4, mk: 5, ga: 106870895, sa: 95877, gx: 100512, rd: 55420150, wr: 103035, pu: 95877}
-- 4604904@92097@mXcn0357: {ops: 266363667, op: 30345092, cl: 100715391, mn: 9243875, ul: 9243302, mk: 14, mv: 4013542, ga: 35562890, sa: 16101573, gx: 13082712, sx: 34, sy: 3523806, rd: 4885237, wr: 6583294, pu: 33062905}
-- .0@mXoss2:       {ops: 259294885, op: 3723859, cl: 9928806, mn: 2298045, ga: 58643542, sa: 70699421, gx: 1595170, sx: 1946, st: 105, sy: 28822779, rd: 45117278, wr: 36496902, pu: 1967032}
+timestamp: 1693988935
+query_duration: 13
+servers_queried: 8
+osts_queried: 24
+mdts_queried: 8
+total_jobs: 2732
+top_3_job_operation_rates_during_query_windows:
+- @33918@login:         {ops: 1917, op: 0, cl: 1014, mn: 0, ul: 0, mk: 0, ga: 903, sa: 0, gx: 0, sw: 13}
+- 4692877@91469@comp1185:  {ops: 1859, op: 118, cl: 1179, mn: 50, ul: 62, mk: 0, mv: 62, ga: 300, sa: 4, gx: 54, rd: 0, wr: 28, pu: 3, sw: 13}
+- 4693116@91469@comp1009:  {ops: 1791, op: 121, cl: 1177, mn: 63, ul: 37, mk: 0, mv: 49, ga: 272, sa: 3, gx: 66, rd: 0, wr: 0, pu: 3, sw: 13}
 ...
 ```
-### Run once, show top 10 jobs, filter out jobids containing mXoss[1-8] & mXgpu1220:
+### Run once, show top 10 jobs, filter out jobids containing oss & login:
 ```
-(lljobstat) [root@mXoss1 bolausson]# ./glljobstat_testing.py -n 1 -c 10 -f mXoss1,mXoss2,mXoss3,mXoss4,mXoss5,mXoss6,mXoss7,mXoss8,mXgpu1220
+# ./glljobstat.py -n 1 -c 3 -f oss,login
 ---
-timestamp: 1692222060
-top_jobs:
-- 4595669@13313@mXgpu1231: {ops: 273864315, op: 55557502, cl: 55606046, mn: 18, ul: 4, mk: 5, ga: 106880337, sa: 95885, gx: 100521, rd: 55425068, wr: 103044, pu: 95885}
-- 4604904@92097@mXcn0357: {ops: 266383277, op: 30347233, cl: 100722289, mn: 9244572, ul: 9244089, mk: 14, mv: 4013759, ga: 35565490, sa: 16102610, gx: 13083767, sx: 34, sy: 3524180, rd: 4885705, wr: 6583793, pu: 33065742}
-- 4595696@13313@mXgpu1217: {ops: 256451095, op: 51986732, cl: 52035195, mn: 16, ul: 3, mk: 5, ga: 100178344, sa: 95587, gx: 101004, rd: 51854818, wr: 103804, pu: 95587}
-- 4604912@92097@mXcn0358: {ops: 233411322, op: 26562788, cl: 88287332, mn: 8097691, ul: 8097082, mk: 16, mv: 3520333, ga: 31146547, sa: 14115500, gx: 11918445, sx: 34, sy: 2890668, rd: 3714576, wr: 6101359, pu: 28958951}
-- 4604911@92097@mXcn0358: {ops: 232533827, op: 26458097, cl: 87936453, mn: 8067651, ul: 8067057, mk: 16, mv: 3505595, ga: 31027449, sa: 14058008, gx: 11882882, sx: 34, sy: 2880922, rd: 3707110, wr: 6089814, pu: 28852739}
-- 4601768@92097@mXcn0826: {ops: 205413209, op: 23343790, cl: 77632255, mn: 6970961, ul: 6970353, mk: 15, mv: 3144259, ga: 27621897, sa: 12504969, gx: 10564156, sx: 34, sy: 2416084, rd: 3690873, wr: 5639708, pu: 24913855}
-- 4613363@13313@mXgpu1223: {ops: 191264129, op: 38768130, cl: 38805002, mn: 14, ul: 2, mk: 5, ga: 74723082, sa: 72343, gx: 76386, rd: 38668264, wr: 78558, pu: 72343}
-- 4604900@92097@mXcn0357: {ops: 190203872, op: 21057319, cl: 69597550, mn: 6650749, ul: 6650140, mk: 19, mv: 2687887, ga: 25581843, sa: 10961013, gx: 10229352, sx: 34, sy: 2502786, rd: 4549603, wr: 5924075, pu: 23811502}
-- 4615601@13313@mXgpu1214: {ops: 150693501, op: 30683350, cl: 30706364, mn: 14, ul: 2, mk: 5, ga: 58494946, sa: 45095, gx: 47662, rd: 30621939, wr: 49029, pu: 45095}
-- 4604915@92097@mXcn0359: {ops: 145891997, op: 16148928, cl: 53107606, mn: 5089739, ul: 5089130, mk: 16, mv: 2046253, ga: 19675589, sa: 8354850, gx: 8446022, sx: 34, sy: 1921282, rd: 3104943, wr: 4684026, pu: 18223579}
-...
+timestamp: 1693989204
+servers_queried: 8
+osts_queried: 24
+mdts_queried: 8
+total_jobs: 2655
+top_3_jobs:
+- 4668060@92097@comp0173:  {ops: 426034658, op: 57832145, cl: 138857935, mn: 12734227, ul: 12733616, mk: 15, mv: 5537267, ga: 85220640, sa: 22201803, gx: 34626910, sx: 34, sy: 4545596, rd: 38719, wr: 6164498, pu: 45541253}
+- 4668058@92097@comp0172:  {ops: 418195272, op: 56786160, cl: 136617854, mn: 12535103, ul: 12534492, mk: 15, mv: 5445887, ga: 82885212, sa: 21839731, gx: 34031784, sx: 34, sy: 4476846, rd: 85924, wr: 6126487, pu: 44829743}
+- 4681703@92097@comp0229:  {ops: 279155542, op: 38637765, cl: 88256241, mn: 8089721, ul: 8089209, mk: 15, mv: 3520730, ga: 58473288, sa: 14113700, gx: 24290602, sx: 34, sy: 2885300, rd: 1285, wr: 3867380, pu: 28930272}
 ```
-### Run once, show top 10 jobs, filter for jobids containing mXoss[1-8] & mXgpu1220:
+### Run once, show top 10 jobs, filter for jobids containing oss & login:
 ```
-(lljobstat) [root@mXoss1 bolausson]# ./glljobstat_testing.py -n 1 -c 10 -f mXoss1,mXoss2,mXoss3,mXoss4,mXoss5,mXoss6,mXoss7,mXoss8,mXgpu1220 -fm
+# ./glljobstat.py -n 1 -c 3 -f oss,login -fm
 ---
-timestamp: 1692222101
-top_jobs:
-- .0@mXoss4:       {ops: 450884760, op: 8986310, cl: 32850266, mn: 7557387, ga: 172017724, sa: 81585692, gx: 5249789, sx: 145539, st: 2610083, sy: 33187060, rd: 63192060, wr: 41084939, pu: 2417911}
-- .0@mXoss8:       {ops: 434638884, op: 5558948, cl: 22674985, mn: 4583048, ga: 74532696, sa: 90326136, gx: 4701305, sx: 26452, st: 51, sy: 35837910, rd: 127632139, wr: 64744159, pu: 4021055}
-- .0@mXoss7:       {ops: 381762048, op: 4712171, cl: 18599239, mn: 3752594, ga: 70787794, sa: 86951350, gx: 3856694, sx: 19002, st: 34, sy: 34444171, rd: 90836592, wr: 64187241, pu: 3615166}
-- .0@mXoss6:       {ops: 330161311, op: 2841469, cl: 9535757, mn: 1922748, ga: 66041853, sa: 82331610, gx: 2003691, sx: 6707, st: 32, sy: 32570059, rd: 77375814, wr: 52369378, pu: 3162193}
-- .0@mXoss3:       {ops: 322791999, op: 6862782, cl: 18545602, mn: 4679201, ga: 86741035, sa: 72760165, gx: 2338168, sx: 3175, st: 90, sy: 29708895, rd: 60881917, wr: 38175536, pu: 2095433}
-- .0@mXoss5:       {ops: 309116482, op: 2702725, cl: 9067416, mn: 1830920, ga: 63760907, sa: 79466982, gx: 1896369, sx: 4405, st: 33, sy: 31655419, rd: 69392386, wr: 46533582, pu: 2805338}
-- 4595658@13313@mXgpu1220: {ops: 277173886, op: 56230816, cl: 56279507, mn: 18, ul: 4, mk: 5, ga: 108169522, sa: 95921, gx: 100613, rd: 56098512, wr: 103047, pu: 95921}
-- .0@mXoss2:       {ops: 259315677, op: 3724537, cl: 9931795, mn: 2298656, ga: 58654643, sa: 70702032, gx: 1595781, sx: 1946, st: 105, sy: 28823869, rd: 45117834, wr: 36497447, pu: 1967032}
-- .0@mXoss1:       {ops: 91816850, op: 5746868, cl: 13828360, mn: 3546209, ga: 48367908, sa: 9069627, gx: 1669877, sx: 3385, st: 170, sy: 3657138, rd: 3271902, wr: 2562619, pu: 92787}
-- .994@mXgpu1220:  {ops: 25937, ga: 14092, st: 11845}
+timestamp: 1693989291
+servers_queried: 8
+osts_queried: 24
+mdts_queried: 8
+total_jobs: 2670
+top_3_jobs:
+- @0@oss4:               {ops: 478777691, op: 37190544, cl: 98494321, mn: 23866665, ga: 263191958, sa: 26544360, gx: 13705403, sx: 191487, st: 2609984, sy: 12445757, rd: 220930, wr: 301726, pu: 14556}
+- @0@oss1:               {ops: 440293163, op: 41416926, cl: 84441230, mn: 22883175, ga: 259249001, sa: 16172000, gx: 8089023, sx: 22344, st: 24, sy: 7682020, rd: 64494, wr: 269226, pu: 3700}
+- @0@oss7:               {ops: 363854972, op: 16568386, cl: 45116913, mn: 8770914, ga: 36365047, sa: 102245054, gx: 9607769, sx: 48028, st: 21, sy: 42628119, rd: 30473311, wr: 65449947, pu: 6581463}
 ...
 ```
 ### Run once show show top 3 job ops in percentage to total ops:
 ```
-(lljobstat) [root@mXoss1 bolausson]# ./glljobstat.py -c 3 -n 1 -p
+# ./glljobstat.py -c 3 -n 1 -p
 ---
-timestamp: 1692539118
+timestamp: 1693989365
 servers_queried: 8
-total_jobs: 2685
-top_3_job_pct:
-- 4636497@46526@mXcn0309:  {ops: 5, rd: 34}
-- @0@mXoss4:               {ops: 4, op: 1, cl: 1, mn: 3, ga: 9, sa: 8, gx: 1, sx: 65, st: 3, sy: 11, rd: 3, wr: 6, pu: 0}
-- @0@mXoss8:               {ops: 4, op: 1, cl: 1, mn: 2, ga: 4, sa: 9, gx: 1, sx: 17, st: 0, sy: 12, rd: 7, wr: 10, pu: 0}
-total_ops:
-- ops:      12436410100
-- cl:       3018058674
-- ga:       2197691775
-- rd:       1967042552
-- sa:       1145471585
-- pu:       962228627
-- op:       932456965
-- wr:       694215410
-- gx:       462296796
-- sy:       331497851
-- mn:       282894686
-- ul:       252913403
-- mv:       106893338
-- st:       82096591
-- sx:       231171
-- mk:       219073
-- rm:       199743
-- ln:       1836
-- qc:       24
+osts_queried: 24
+mdts_queried: 8
+total_jobs: 2662
+top_3_job_operations_in_percent_to_total_operations:
+- 4668058@92097@comp0172:  {ops: 5, op: 6, cl: 5, mn: 4, ul: 7, mk: 0, mv: 7, ga: 3, sa: 4, gx: 6, sx: 0, sy: 3, rd: 0, wr: 3, pu: 8}
+- 4668060@92097@comp0173:  {ops: 5, op: 6, cl: 5, mn: 5, ul: 8, mk: 0, mv: 7, ga: 4, sa: 4, gx: 6, sx: 0, sy: 3, rd: 0, wr: 3, pu: 8}
+- @0@oss4:               {ops: 5, op: 4, cl: 4, mn: 9, ga: 11, sa: 5, gx: 3, sx: 45, st: 4, sy: 8, rd: 0, wr: 0, pu: 0}
+total_operations:
+- ops:       {rate: 8774935283}
+- cl:        {rate: 2558381972}
+- ga:        {rate: 2379661320}
+- op:        {rate: 978019848}
+- pu:        {rate: 566309329}
+- gx:        {rate: 540180883}
+- sa:        {rate: 511439447}
+- mn:        {rate: 279272377}
+- rd:        {rate: 257793670}
+- wr:        {rate: 238394981}
+- ul:        {rate: 167359764}
+- sy:        {rate: 160586870}
+- mv:        {rate: 76740632}
+- st:        {rate: 59900727}
+- sx:        {rate: 429861}
+- mk:        {rate: 262353}
+- rm:        {rate: 195453}
+- ln:        {rate: 5664}
+- pa:        {rate: 132}
 ...
 ```
-### Run once show show top 3 jobs ops, total ops rate and highest op rate ever:
+### Run forever show show top 3 jobs ops, total ops rate and highest op rate logged:
 ```
-(lljobstat) [root@mXoss1 bolausson]# ./glljobstat.py -c 3 -n 1 -tr
+# ./glljobstat.py -c 3 -n 2 -tr
+[...]
 ---
-timestamp: 1692539402
-sample_duration: 12
+timestamp: 1693989469
+query_duration: 13
 servers_queried: 8
-total_jobs: 2698
-top_3_job_rates:
-- 4636497@46526@mXcn0309:  {ops: 9033, rd: 9033, wr: 0}
-- 4633225@92097@mXlcn0144: {ops: 1393, rd: 1385, wr: 8}
-- 4633221@92097@mXlcn0144: {ops: 1325, rd: 1317, wr: 8}
-total_op_rate:
-- cl:       4962
-- op:       2035
-- mn:       1222
-- gx:       613
-- ul:       311
-- mv:       121
-- mk:       84
-- st:       0
-- sx:       0
-- rm:       0
-- ln:       0
-total_op_rate_ever:
-- rd:       15271
-- cl:       4962
-- ops:      3177
-- ga:       2439
-- op:       2035
-- wr:       1491
-- pu:       1440
-- mn:       1222
-- sa:       911
-- gx:       613
-- ul:       311
-- sy:       139
-- mv:       121
-- mk:       84
-- qc:       0
-- st:       0
-- sx:       0
-- rm:       0
-- ln:       0
+osts_queried: 24
+mdts_queried: 8
+total_jobs: 2540
+top_3_job_operation_rates_during_query_windows:
+- @33918@login5:         {ops: 2326, op: 0, cl: 1302, mn: 0, ul: 0, mk: 0, ga: 1024, sa: 0, gx: 0, sw: 13}
+- 4693116@91469@comp1009:  {ops: 2013, op: 134, cl: 1335, mn: 62, ul: 49, mk: 0, mv: 62, ga: 297, sa: 4, gx: 66, rd: 0, wr: 0, pu: 4, sw: 13}
+- 4692878@91469@comp0955:  {ops: 1814, op: 109, cl: 1199, mn: 49, ul: 49, mk: 0, mv: 49, ga: 271, sa: 3, gx: 53, rd: 0, wr: 28, pu: 3, sw: 13}
+total_rate_per_operation_during_query_window:
+- ops:       {rate: 30128}
+- cl:        {rate: 13006}
+- ga:        {rate: 6961}
+- op:        {rate: 2469}
+- pu:        {rate: 1911}
+- gx:        {rate: 1575}
+- sa:        {rate: 830}
+- rd:        {rate: 824}
+- wr:        {rate: 706}
+- ul:        {rate: 683}
+- mn:        {rate: 620}
+- mv:        {rate: 413}
+- sy:        {rate: 35}
+- mk:        {rate: 0}
+- sx:        {rate: 0}
+- ln:        {rate: 0}
+- rm:        {rate: 0}
+- pa:        {rate: 0}
+- st:        {rate: -4}
+highest_rate_per_operation_in_logfile:
+- ops:       {rate: 31160,     ts: 1693081240}
+- rd:        {rate: 15744,     ts: 1693081240}
+- cl:        {rate: 13006,     ts: 1693989469}
+- ga:        {rate: 6961,      ts: 1693989469}
+- op:        {rate: 3048,      ts: 1693563012}
+- pu:        {rate: 1911,      ts: 1693989469}
+- gx:        {rate: 1761,      ts: 1693563012}
+- mn:        {rate: 1263,      ts: 1693563012}
+- wr:        {rate: 1236,      ts: 1693081240}
+- sa:        {rate: 1113,      ts: 1693740015}
+- ul:        {rate: 917,       ts: 1693563012}
+- mv:        {rate: 413,       ts: 1693989469}
+- sy:        {rate: 361,       ts: 1693565717}
+- mk:        {rate: 124,       ts: 1693563012}
+- rm:        {rate: 46,        ts: 1693563012}
+- qc:        {rate: 6,         ts: 1693801624}
+- st:        {rate: 3,         ts: 1693081240}
+- sx:        {rate: 0,         ts: 1693081240}
+- ln:        {rate: 0,         ts: 1693081240}
+- pa:        {rate: 0,         ts: 1693081240}
+- gi:        {rate: 0,         ts: 1693563000}
+job_with_hightest_rate_per_operation_in_logfile:
+- ops:       {pu: 88, ops: 4451, st: 0, rd: 0, wr: 356, op: 509, cl: 753, mn: 470, ul: 412, mk: 86, rm: 46, mv: 0, ga: 1221, sa: 87, gx: 422, ts: 1693563012, job_id: 4681462@41671@comp0229}
+- op:        {pu: 88, ops: 4451, st: 0, rd: 0, wr: 356, op: 509, cl: 753, mn: 470, ul: 412, mk: 86, rm: 46, mv: 0, ga: 1221, sa: 87, gx: 422, ts: 1693563012, job_id: 4681462@41671@comp0229}
+- cl:        {rd: 34, ops: 1603, wr: 9, ga: 8, op: 0, cl: 1536, mn: 0, ul: 0, mk: 0, mv: 0, sa: 0, gx: 15, st: 0, pu: 0, ts: 1693081240, job_id: 4647531@57608@comp0502}
+- mn:        {pu: 88, ops: 4451, st: 0, rd: 0, wr: 356, op: 509, cl: 753, mn: 470, ul: 412, mk: 86, rm: 46, mv: 0, ga: 1221, sa: 87, gx: 422, ts: 1693563012, job_id: 4681462@41671@comp0229}
+- ln:        {rd: 77, ops: 472, wr: 55, pu: 0, ga: 118, sa: 0, op: 28, cl: 119, mn: 28, ln: 0, ul: 0, mk: 18, rm: 0, mv: 0, gx: 27, sx: 0, sy: 0, pa: 0, ts: 1693081240, job_id: @34013@login6}
+- ul:        {pu: 88, ops: 4451, st: 0, rd: 0, wr: 356, op: 509, cl: 753, mn: 470, ul: 412, mk: 86, rm: 46, mv: 0, ga: 1221, sa: 87, gx: 422, ts: 1693563012, job_id: 4681462@41671@comp0229}
+- mk:        {pu: 88, ops: 4451, st: 0, rd: 0, wr: 356, op: 509, cl: 753, mn: 470, ul: 412, mk: 86, rm: 46, mv: 0, ga: 1221, sa: 87, gx: 422, ts: 1693563012, job_id: 4681462@41671@comp0229}
+- rm:        {pu: 88, ops: 4451, st: 0, rd: 0, wr: 356, op: 509, cl: 753, mn: 470, ul: 412, mk: 86, rm: 46, mv: 0, ga: 1221, sa: 87, gx: 422, ts: 1693563012, job_id: 4681462@41671@comp0229}
+- mv:        {pu: 4, ops: 2013, rd: 0, wr: 0, op: 134, cl: 1335, mn: 62, ul: 49, mk: 0, mv: 62, ga: 297, sa: 4, gx: 66, ts: 1693989469, job_id: 4693116@91469@comp1009}
+- ga:        {pu: 88, ops: 4451, st: 0, rd: 0, wr: 356, op: 509, cl: 753, mn: 470, ul: 412, mk: 86, rm: 46, mv: 0, ga: 1221, sa: 87, gx: 422, ts: 1693563012, job_id: 4681462@41671@comp0229}
+- sa:        {op: 0, ops: 321, cl: 60, mn: 0, mk: 0, ga: 56, sa: 102, gx: 0, rd: 0, wr: 0, pu: 102, ts: 1693563307, job_id: 4665648@39362@comp0170}
+- gx:        {pu: 88, ops: 4451, st: 0, rd: 0, wr: 356, op: 509, cl: 753, mn: 470, ul: 412, mk: 86, rm: 46, mv: 0, ga: 1221, sa: 87, gx: 422, ts: 1693563012, job_id: 4681462@41671@comp0229}
+- sx:        {rd: 1, ops: 36, wr: 1, ga: 8, sa: 6, pu: 0, sy: 2, st: 0, op: 3, cl: 9, mn: 2, gx: 2, sx: 0, ts: 1693081240, job_id: @0@oss4}
+- st:        {rd: 84, ops: 439, ga: 1, op: 22, cl: 276, mn: 0, ul: 0, mk: 0, rm: 0, sa: 0, gx: 0, wr: 52, st: 2, pu: 0, ts: 1693081240, job_id: 4647533@57608@comp1125}
+- sy:        {pu: 97, ops: 811, sy: 75, rd: 3, wr: 28, sa: 30, op: 101, cl: 191, mn: 58, ul: 12, mk: 0, mv: 3, ga: 133, gx: 78, sx: 0, ts: 1693740002, job_id: 4681611@92097@comp0220}
+- rd:        {rd: 2456, ops: 2531, wr: 75, sa: 0, pu: 0, ts: 1693081240, job_id: 4655776@92097@comp0160}
+- wr:        {ga: 82, ops: 1451, rd: 80, wr: 372, op: 293, cl: 295, mn: 293, mk: 37, sa: 0, gx: 0, ts: 1693563012, job_id: 4667940@62567@comp0440}
+- pu:        {pu: 400, ops: 1107, sy: 0, rd: 0, wr: 0, sa: 31, op: 113, cl: 327, mn: 22, ul: 20, mk: 0, mv: 0, ga: 143, gx: 52, sx: 0, ts: 1693802848, job_id: 4681704@92097@comp0229}
+- gi:        {pu: 0, ops: 0, st: 0, rd: 0, wr: 0, gi: 0, op: 0, cl: 0, mn: 0, ul: 0, mk: 0, rm: 0, mv: 0, ga: 0, sa: 0, gx: 0, ts: 1693563000, job_id: 4680844@91469@comp0229}
+- qc:        {qc: 6, ops: 114, ga: 45, gx: 64, ts: 1693801624, job_id: @0@login1}
+- pa:        {rd: 77, ops: 472, wr: 55, pu: 0, ga: 118, sa: 0, op: 28, cl: 119, mn: 28, ln: 0, ul: 0, mk: 18, rm: 0, mv: 0, gx: 27, sx: 0, sy: 0, pa: 0, ts: 1693081240, job_id: @34013@login6}
 ...
 ```
