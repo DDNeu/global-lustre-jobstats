@@ -13,6 +13,8 @@ glljobstat.py is based on [lljobstat](https://review.whamcloud.com/c/fs/lustre-r
 * Filter out certain job_ids
 * Config file for SSH, OSS/MDS, filter and other settings
 * Configure job_id name leght for pretty printing
+* Limit number of parallel SSH connections
+* Limit number of parallel data processing tasks
 
 ## Examples
 ### Help
