@@ -88,7 +88,7 @@ class ArgParser: # pylint: disable=too-few-public-methods,too-many-instance-attr
                             help="""Modify the filter to only show job_ids that
                             match the filter instead of removing them""")
         parser.add_argument('-l', '--length', dest='jobid_length',
-                            help='Set job_id filename lenght for pretty printing')
+                            help='Set job_id filename length for pretty printing')
         parser.add_argument('-t', '--total', dest='total', action='store_true',
                             help='Show sum over all jobs for each operation')
         parser.add_argument('-tr', '--totalrate', dest='totalrate', action='store_true',
@@ -134,19 +134,19 @@ class ArgParser: # pylint: disable=too-few-public-methods,too-many-instance-attr
 
         if not Path(self.configfile).is_file():
             self.config['SERVERS'] = {
-                'list': "Comma separated list of OSS/MDS to query",
+                '#list': "Comma separated list of OSS/MDS to query",
             }
             self.config['FILTER'] = {
-                'list': "Comma separated list of job_ids to ignore",
+                '#list': "Comma separated list of job_ids to ignore",
             }
             self.config['MISC'] = {
-                'jobid_length': 17,
-                'totalratefile': expanduser("~/.glljobstat.db")
+                '#jobid_length': 17,
+                '#totalratefile': expanduser("~/.glljobstat.db")
             }
             self.config['SSH'] = {
-                'user': "SSH user to connect to OSS/MDS",
-                'key': "Path to SSH key file to use, leave empty to usw a password",
-                'keytype': "Key type used (DSS, DSA, ECDA, RSA, Ed25519)"
+                '#user': "SSH user to connect to OSS/MDS",
+                '#key': "Path to SSH key file to use, leave empty to use a password",
+                '#keytype': "Key type used (DSS, DSA, ECDA, RSA, Ed25519)"
             }
 
             with open(self.configfile, 'w', encoding='utf-8') as cfg:
