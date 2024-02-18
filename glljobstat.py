@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 '''
 -----------------------------------------------------------------------------
-glljobstat.py by Bjoern Olausson
+glljobstat.py by Bjoern Olausson and Maxence Joulin
 -----------------------------------------------------------------------------
                           --- WARNING ---
      This work is no official product and comes with no warranty!
@@ -49,6 +49,7 @@ class ArgParser: # pylint: disable=too-few-public-methods,too-many-instance-attr
         self.keytype = None
         self.serverlist = None
         self.jobid_length = None
+        self.jobid_separator = None
         self.password = None
         self.totalratefile = None
 
@@ -69,6 +70,8 @@ class ArgParser: # pylint: disable=too-few-public-methods,too-many-instance-attr
                             help='the times to repeat the parsing (default unlimited).')
         parser.add_argument('--param', type=str, default='*.*.job_stats',
                             help='the param path to be checked (default *.*.job_stats).')
+        parser.add_argument('--groupby', type=str, default='none',
+                            help='sort by user / node / jobid (default none).')
         parser.add_argument('-o', '--ost', dest='param', action='store_const',
                             const='obdfilter.*.job_stats',
                             help='check only OST job stats.')
@@ -94,6 +97,8 @@ class ArgParser: # pylint: disable=too-few-public-methods,too-many-instance-attr
         parser.add_argument('-tr', '--totalrate', dest='totalrate', action='store_true',
                             help="""Whenever -tr is is used, a persistent file
                             will be created and keep track of the highest rate ever""")
+        parser.add_argument('-minr', '--minrate', type=int, default=1,
+                            help='the minimal ops rate number a job needs to be shown in top jobs (default 1).')
         parser.add_argument('-trf', '--totalratefile', dest='totalratefile', type=str,
                             default=expanduser("~/.glljobstatdb.pickle"),
                             help=f"""Path to a pickle file which will keep track of
@@ -140,6 +145,7 @@ class ArgParser: # pylint: disable=too-few-public-methods,too-many-instance-attr
                 '#list': "Comma separated list of job_ids to ignore",
             }
             self.config['MISC'] = {
+                '#jobid_separator': "@",
                 '#jobid_length': 17,
                 '#totalratefile': expanduser("~/.glljobstat.db")
             }
@@ -179,6 +185,7 @@ class ArgParser: # pylint: disable=too-few-public-methods,too-many-instance-attr
             except Exception: # pylint: disable=bare-except,broad-exception-caught
                 self.jobid_length = 17
 
+        self.jobid_separator = self.config['MISC']['jobid_separator']
         self.serverlist = set(self.servers)
         self.user = self.config['SSH']['user']
         self.keytype = self.config['SSH']['keytype']
@@ -391,7 +398,13 @@ class JobStatsParser:
 
                 job_snap_time_new = timestamp_dict[job_id]["snapshot_time"]
                 duration = job_snap_time_new - job_snap_time_ref
+
+                if duration <= 0:
+                    continue
+
+
                 job_sampling_window[job_id] = duration
+
 
                 for metric in self.reference[job_id]:
                     if metric in self.op_keys.values():
@@ -402,6 +415,8 @@ class JobStatsParser:
                             rate = 0
                         else:
                             dif = new - old
+                            if dif < 0:
+                                dif = new
                             if self.args.rate:
                                 if duration == 0:
                                     rate = 0
@@ -505,10 +520,10 @@ class JobStatsParser:
                             value_counter = int(value_counter_raw)
                         except ValueError:
                             value_counter = value_counter_raw
-
                         metrics_dict[metric].update({value_desc: value_counter})
 
                     job_dict.update(metrics_dict)
+
                     line = next(data_iterable)
                 jobstats_dict["job_stats"].append(job_dict)
                 if "- job_id:" in line:
@@ -521,7 +536,6 @@ class JobStatsParser:
             except StopIteration:
                 jobstats_dict["job_stats"].append(job_dict)
                 break
-
         return jobstats_dict
 
 
@@ -530,20 +544,38 @@ class JobStatsParser:
         merge stats data of job to jobs
         '''
         jobid = job['job_id']
-        job2 = jobs.get(job['job_id'], {})
-        timestamp_dict[jobid] = {}
+        jobid_ori = job['job_id']
+
+        jobid = jobid.replace('"', '')
+        if self.argparser.jobid_separator in jobid:
+            splitted = jobid.split(self.argparser.jobid_separator)
+            if len(splitted) == 3:
+                if self.args.groupby == "jobid":
+                    jobid = splitted[0]
+                if self.args.groupby == "user":
+                    jobid = splitted[1]
+                if self.args.groupby == "node":
+                    jobid = splitted[2]
+        jobid = '"' + jobid + '"'
+        job2 = jobs.get(jobid, {})
+
+        if jobid not in timestamp_dict:
+            timestamp_dict[jobid] = {}
 
         include_metrics = list(self.op_keys.values())
         timestamp_id = ["snapshot_time", "start_time", "elapsed_time"]
 
         for key in job.keys():
             if key in timestamp_id:
-                timestamp_dict[jobid].update({key: job[key]})
+                if key in timestamp_dict[jobid]:
+                    if timestamp_dict[jobid][key] < job[key]:
+                        timestamp_dict[jobid].update({key: job[key]})
+                else:
+                    timestamp_dict[jobid].update({key: job[key]})
             if key not in include_metrics:
                 continue
             if job[key]['samples'] == 0:
                 continue
-
             job2[key] = job2.get(key, 0) + job[key]['samples']
             job2['ops'] = job2.get('ops', 0) + job[key]['samples']
 
@@ -555,10 +587,10 @@ class JobStatsParser:
         insert job to top_jobs in descending order by the key job['ops'].
         top_jobs is an array with at most count elements
         '''
-        top_jobs.append(job)
+        if job['ops'] > self.args.minrate:
+            top_jobs.append(job)
 
         for i in range(len(top_jobs) - 2, -1, -1):
-
             try:
                 if job['ops'] > top_jobs[i]['ops']:
                     top_jobs[i + 1] = top_jobs[i]
@@ -635,6 +667,9 @@ class JobStatsParser:
         else:
             times = query_time
 
+        if query_duration == 0:
+            return
+        
         print('---') # mark the begining of YAML doc in stream
         #print(f'timestamp: {int(time.time())}')
         print(f'timestamp: {times}')
@@ -828,11 +863,7 @@ class JobStatsParser:
 
         total_jobs = len(set(jobs))
 
-        if (self.args.rate or self.args.difference) and not self.reference:
-            jobs, job_sampling_window, query_duration = self.rate_calc(jobs,
-                                                                        query_time,
-                                                                        timestamp_dict)
-        elif (self.args.rate or self.args.difference) and self.reference:
+        if (self.args.rate or self.args.difference):
             jobs, job_sampling_window, query_duration = self.rate_calc(jobs,
                                                                         query_time,
                                                                         timestamp_dict)
@@ -987,7 +1018,6 @@ class JobStatsParser:
         self.osts_mdts = Counter([item.split('.')[0] for
                         sublist in self.hosts_param.values() for
                         item in sublist])
-
         if self.args.verb:
             total_time_start = time.time()
 
