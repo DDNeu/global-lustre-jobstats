@@ -25,6 +25,7 @@ from os.path import expanduser
 from collections import Counter
 from multiprocessing import Pool, cpu_count
 import urllib3
+import re
 
 warnings.filterwarnings(action='ignore',module='.*paramiko.*')
 urllib3.disable_warnings()
@@ -49,7 +50,6 @@ class ArgParser: # pylint: disable=too-few-public-methods,too-many-instance-attr
         self.keytype = None
         self.serverlist = None
         self.jobid_length = None
-        self.jobid_separator = None
         self.password = None
         self.totalratefile = None
 
@@ -71,7 +71,8 @@ class ArgParser: # pylint: disable=too-few-public-methods,too-many-instance-attr
         parser.add_argument('--param', type=str, default='*.*.job_stats',
                             help='the param path to be checked (default *.*.job_stats).')
         parser.add_argument('--groupby', type=str, default='none',
-                            help='sort by user / node / jobid (default none).')
+                            help="""sort by user / group / host / host_short / job / 
+                            proc according to jobid_name Lustre pattern (default none).""")
         parser.add_argument('-o', '--ost', dest='param', action='store_const',
                             const='obdfilter.*.job_stats',
                             help='check only OST job stats.')
@@ -145,7 +146,6 @@ class ArgParser: # pylint: disable=too-few-public-methods,too-many-instance-attr
                 '#list': "Comma separated list of job_ids to ignore",
             }
             self.config['MISC'] = {
-                '#jobid_separator': "@",
                 '#jobid_length': 17,
                 '#totalratefile': expanduser("~/.glljobstat.db")
             }
@@ -185,7 +185,6 @@ class ArgParser: # pylint: disable=too-few-public-methods,too-many-instance-attr
             except Exception: # pylint: disable=bare-except,broad-exception-caught
                 self.jobid_length = 17
 
-        self.jobid_separator = self.config['MISC']['jobid_separator']
         self.serverlist = set(self.servers)
         self.user = self.config['SSH']['user']
         self.keytype = self.config['SSH']['keytype']
@@ -277,6 +276,16 @@ class JobStatsParser:
         'ts' : 'timestamp',
     }
 
+    jobid_name_keys = {
+        '%e' : 'exe',
+        '%g' : 'group',
+        '%u' : 'user',
+        '%p' : 'proc',
+        '%j' : 'job',
+        '%H' : 'host_short',
+        '%h' : 'host',
+    }
+
     def __init__(self):
         self.args = None
         self.argparser = None
@@ -285,6 +294,8 @@ class JobStatsParser:
         self.reference_time = None
         self.reference_snaptime = None
         self.reference = {}
+        self.jobid_var = {}
+        self.jobid_separator = None
 
     def topdb(self, total_ops, jobs, query_time): # pylint: disable=too-many-locals,too-many-branches,too-many-statements
         '''
@@ -546,17 +557,13 @@ class JobStatsParser:
         jobid = job['job_id']
         jobid_ori = job['job_id']
 
-        jobid = jobid.replace('"', '')
-        if self.argparser.jobid_separator in jobid:
-            splitted = jobid.split(self.argparser.jobid_separator)
-            if len(splitted) == 3:
-                if self.args.groupby == "jobid":
-                    jobid = splitted[0]
-                if self.args.groupby == "user":
-                    jobid = splitted[1]
-                if self.args.groupby == "node":
-                    jobid = splitted[2]
-        jobid = '"' + jobid + '"'
+        if self.args.groupby != "none":
+            jobid = jobid.replace('"', '')
+            if self.jobid_separator in jobid:
+                splitted = jobid.split(self.jobid_separator)
+                jobid = splitted[self.jobid_var[self.args.groupby]]
+            jobid = '"' + jobid + '"'
+        
         job2 = jobs.get(jobid, {})
 
         if jobid not in timestamp_dict:
@@ -667,9 +674,6 @@ class JobStatsParser:
         else:
             times = query_time
 
-        if query_duration == 0:
-            return
-        
         print('---') # mark the begining of YAML doc in stream
         #print(f'timestamp: {int(time.time())}')
         print(f'timestamp: {times}')
@@ -1005,6 +1009,36 @@ class JobStatsParser:
         else:
             return hostdata
 
+    def parsing_jobid_name(self):
+
+        host = next(iter(self.argparser.serverlist))
+        arg_list = [host, "stats", "lctl get_param -n jobid_name"]
+        jobid_name = self.ssh_get(arg_list)
+        jobid_name = jobid_name.strip()
+        res = {}
+        for opkey in self.jobid_name_keys:
+            #print(self.jobid_name_keys[opkey])
+            #res[opkey] = re.search(re.escape(opkey), jobid_name)
+            if re.search(re.escape(opkey), jobid_name):
+                res[opkey] = (re.search(re.escape(opkey), jobid_name)).start()
+        res = dict(sorted(res.items(), key=lambda item: item[1]))
+        res = list(res)
+
+        jobid_name_stripped = jobid_name
+        for i in res:
+            jobid_name_stripped = jobid_name_stripped.replace(i, '')        
+
+        self.jobid_separator = jobid_name_stripped[0]
+
+        for i in range(len(res)):
+            self.jobid_var[self.jobid_name_keys[res[i]]] = i
+        
+        if self.args.groupby != "none":
+            if self.args.groupby not in self.jobid_var:
+                print("groupby key '" + self.args.groupby + "' has not been found in jobid_name pattern, terminating") 
+                print("current jobid_name: " + jobid_name)
+                print("available values: " + str(self.jobid_name_keys))
+                sys.exit()
 
     def Run(self):
         '''
@@ -1020,6 +1054,8 @@ class JobStatsParser:
                         item in sublist])
         if self.args.verb:
             total_time_start = time.time()
+
+        self.parsing_jobid_name()        
 
         i = 0
         try:
