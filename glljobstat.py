@@ -867,7 +867,11 @@ class JobStatsParser:
 
         total_jobs = len(set(jobs))
 
-        if (self.args.rate or self.args.difference):
+        if (self.args.rate or self.args.difference) and not self.reference:
+            jobs, job_sampling_window, query_duration = self.rate_calc(jobs,
+                                                                        query_time,
+                                                                        timestamp_dict)
+        elif (self.args.rate or self.args.difference) and self.reference:
             jobs, job_sampling_window, query_duration = self.rate_calc(jobs,
                                                                         query_time,
                                                                         timestamp_dict)
