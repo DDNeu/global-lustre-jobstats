@@ -73,6 +73,8 @@ class ArgParser: # pylint: disable=too-few-public-methods,too-many-instance-attr
         parser.add_argument('--groupby', type=str, default='none',
                             help="""sort by user / group / host / host_short / job / 
                             proc according to jobid_name Lustre pattern (default none).""")
+        parser.add_argument('--sortby', type=str, default='ops',
+                            help="""sort top_jobs by operation type (ops, open, close, rename...)  (default ops).""")
         parser.add_argument('-o', '--ost', dest='param', action='store_const',
                             const='obdfilter.*.job_stats',
                             help='check only OST job stats.')
@@ -594,15 +596,18 @@ class JobStatsParser:
         insert job to top_jobs in descending order by the key job['ops'].
         top_jobs is an array with at most count elements
         '''
-        if job['ops'] > self.args.minrate:
+        if job["ops"] > self.args.minrate:
             top_jobs.append(job)
 
         for i in range(len(top_jobs) - 2, -1, -1):
             try:
-                if job['ops'] > top_jobs[i]['ops']:
+                if self.args.sortby not in top_jobs[i]:
                     top_jobs[i + 1] = top_jobs[i]
                     top_jobs[i] = job
-                else:
+                elif job[self.args.sortby] > top_jobs[i][self.args.sortby]:
+                    top_jobs[i + 1] = top_jobs[i]
+                    top_jobs[i] = job
+                else :
                     break
             except KeyError:
                 pass
@@ -1059,7 +1064,13 @@ class JobStatsParser:
         if self.args.verb:
             total_time_start = time.time()
 
-        self.parsing_jobid_name()        
+        self.parsing_jobid_name()   
+
+        if self.args.sortby not in self.op_keys_rev:
+            print("sortby argument key " + self.args.sortby + " is not in ops key list")
+            print("ops key list:")
+            print(self.op_keys_rev.keys())
+            sys.exit()   
 
         i = 0
         try:
