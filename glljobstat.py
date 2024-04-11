@@ -58,10 +58,10 @@ class ArgParser: # pylint: disable=too-few-public-methods,too-many-instance-attr
         '''
         define and parse arguments
         '''
-        self.configfile = expanduser("~/.glljobstat.conf")
-
         parser = argparse.ArgumentParser(prog='glljobstat.py',
                                          description='List top jobs.')
+        parser.add_argument('-cfg', '--configfile', dest='configfile', type=str, default='~/.glljobstat.conf',
+                            help='Full path to config file (default ~/.glljobstat.conf).')
         parser.add_argument('-c', '--count', type=int, default=5,
                             help='the number of top jobs to be listed (default 5).')
         parser.add_argument('-i', '--interval', type=int, default=10,
@@ -140,6 +140,9 @@ class ArgParser: # pylint: disable=too-few-public-methods,too-many-instance-attr
         self.args = parser.parse_args()
         self.config = configparser.ConfigParser()
 
+        
+        self.configfile = expanduser(self.args.configfile)
+        
         if not Path(self.configfile).is_file():
             self.config['SERVERS'] = {
                 '#list': "Comma separated list of OSS/MDS to query",
