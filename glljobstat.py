@@ -432,9 +432,9 @@ class JobStatsParser:
                         else:
                             dif = new - old
                             if dif < 0:
-                                dif = new
+                                dif = 0
                             if self.args.rate:
-                                if duration == 0:
+                                if duration == 0 or dif == 0:
                                     rate = 0
                                 else:
                                     rate = round(dif / duration)
@@ -512,6 +512,7 @@ class JobStatsParser:
                     key = splitline[1].rstrip(":")
                     value = splitline[2]
                     job_dict.update({key: value})
+
                     continue
                 if any(timekey in line for timekey in ['snapshot_time:',
                                                         'start_time:',
