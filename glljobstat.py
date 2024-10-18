@@ -525,13 +525,40 @@ class JobStatsParser:
                     continue
                 while not "- job_id:" in line:
                     clean = line.replace(' ', '')
-                    metric_raw, values_raw = clean.split("{")
+                    metric_raw, values_raw = clean.split("{", maxsplit=1)
+                    # values_raw = "samples:8192,unit:bytes,min:4194304,max:4194304,sum:34359738368,sumsq:144115188075855872,hist:{1M:1212,4M:8192}}"
+                    hist_bin_dict = {}
+                    if "hist" in values_raw:
+                        values_raw, hist_raw = values_raw.split("{")
+                        value_list = values_raw.rstrip(",hist:").split(",")
+                        hist_values = hist_raw.rstrip("}")
+                        hist_bin_list = hist_values.split(",")
+                        # hist_bin_list = ["1M:1212", "4M:8192"]
+                        for bin in hist_bin_list:
+                            try:
+                                key, value = bin.split(":")
+                            except ValueError as e:
+                                continue
+                            else:
+                                hist_bin_dict[key] = value
+                        value_list.append(hist_bin_dict)
+                        value_list.append(f"hist:{{{hist_values}}}")
+                    else:
+                        value_list = values_raw.rstrip("}").split(",")
+
                     metric = metric_raw.rstrip(":")
-                    value_list = values_raw.rstrip("}").split(",")
                     metrics_dict = {metric: {}}
 
+                    # value_ist = ['samples:19777', 'unit:bytes', 'min:1048576', 'max:4194304', 'sum:31411142656', 'sumsq:77704685758185472', 'hist:{1M:16384,4M:3393}']
                     for item in value_list:
-                        value_desc, value_counter_raw = item.split(":")
+                        try:
+                            item_list = item.split(":")
+                        except AttributeError as e:
+                            value_desc = "hist"
+                            value_counter = 0
+                        else:
+                            value_desc = item_list[0]
+                            value_counter_raw = item_list[1]
 
                         try:
                             value_counter = int(value_counter_raw)
