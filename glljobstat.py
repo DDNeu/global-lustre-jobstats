@@ -128,6 +128,8 @@ class ArgParser: # pylint: disable=too-few-public-methods,too-many-instance-attr
                             help="""Chops the number of parallel data pasing tasks into a number
                             of chunks which it submits to the process pool as separate tasks
                             (default: 1)""")
+        parser.add_argument('-nh', '--nohist', dest='nohist', action='store_true',
+                            help='Disable read_bytes and write_bytes history')
         parser.add_argument('-v', '--verbose', dest='verb', action='store_true',
                             help='Show some debug and timing information')
 
@@ -278,9 +280,8 @@ class JobStatsParser:
         'prealloc'   : 'pa',
         'read_bytes' : 'rb',
         'write_bytes': 'wb'
-        
     }
-
+    
     misc_keys = {
         'sw' : 'sampling_window',
         'sn' : 'snapshot_time',
@@ -1106,6 +1107,12 @@ class JobStatsParser:
         self.argparser = ArgParser()
         self.argparser.run()
         self.args = self.argparser.args
+        
+        if self.args.nohist:
+            self.op_keys.pop("rb")
+            self.op_keys.pop("wb")
+            self.op_keys_rev.pop("read_bytes")
+            self.op_keys_rev.pop("write_bytes")
 
         self.hosts_param = self.get_data("param")
         self.osts_mdts = Counter([item.split('.')[0] for
