@@ -20,6 +20,7 @@ import argparse
 import warnings
 import configparser
 from pathlib import Path
+from operator import add
 from getpass import getpass
 from os.path import expanduser
 from collections import Counter
@@ -243,36 +244,41 @@ class JobStatsParser:
         'gi' : 'get_info',
         'si' : 'set_info',
         'qc' : 'quotactl',
-        'pa' : 'prealloc'
+        'pa' : 'prealloc',
+        'rb' : 'read_bytes',
+        'wb' : 'write_bytes'
     }
 
     op_keys_rev = {
-        'ops'      : 'ops',
-        'create'   : 'cr',
-        'open'     : 'op',
-        'close'    : 'cl',
-        'mknod'    : 'mn',
-        'link'     : 'ln',
-        'unlink'   : 'ul',
-        'mkdir'    : 'mk',
-        'rmdir'    : 'rm',
-        'rename'   : 'mv',
-        'getattr'  : 'ga',
-        'setattr'  : 'sa',
-        'getxattr' : 'gx',
-        'setxattr' : 'sx',
-        'statfs'   : 'st',
-        'sync'     : 'sy',
-        'read'     : 'rd',
-        'write'    : 'wr',
-        'punch'    : 'pu',
-        'migrate'  : 'mi',
-        'fallocate': 'fa',
-        'destroy'  : 'dt',
-        'get_info' : 'gi',
-        'set_info' : 'si',
-        'quotactl' : 'qc',
-        'prealloc' : 'pa'
+        'ops'        : 'ops',
+        'create'     : 'cr',
+        'open'       : 'op',
+        'close'      : 'cl',
+        'mknod'      : 'mn',
+        'link'       : 'ln',
+        'unlink'     : 'ul',
+        'mkdir'      : 'mk',
+        'rmdir'      : 'rm',
+        'rename'     : 'mv',
+        'getattr'    : 'ga',
+        'setattr'    : 'sa',
+        'getxattr'   : 'gx',
+        'setxattr'   : 'sx',
+        'statfs'     : 'st',
+        'sync'       : 'sy',
+        'read'       : 'rd',
+        'write'      : 'wr',
+        'punch'      : 'pu',
+        'migrate'    : 'mi',
+        'fallocate'  : 'fa',
+        'destroy'    : 'dt',
+        'get_info'   : 'gi',
+        'set_info'   : 'si',
+        'quotactl'   : 'qc',
+        'prealloc'   : 'pa',
+        'read_bytes' : 'rb',
+        'write_bytes': 'wb'
+        
     }
 
     misc_keys = {
@@ -540,22 +546,21 @@ class JobStatsParser:
                             except ValueError as e:
                                 continue
                             else:
-                                hist_bin_dict[key] = value
+                                hist_bin_dict[key] = int(value)
                         value_list.append(hist_bin_dict)
-                        value_list.append(f"hist:{{{hist_values}}}")
                     else:
                         value_list = values_raw.rstrip("}").split(",")
 
                     metric = metric_raw.rstrip(":")
                     metrics_dict = {metric: {}}
 
-                    # value_ist = ['samples:19777', 'unit:bytes', 'min:1048576', 'max:4194304', 'sum:31411142656', 'sumsq:77704685758185472', 'hist:{1M:16384,4M:3393}']
+                    # value_list = ['samples:81920', 'unit:bytes', 'min:1048576', 'max:4194304', 'sum:137438953472', 'sumsq:360287970189639680', {'1M': '65536', '4M': '16384'}]
                     for item in value_list:
                         try:
                             item_list = item.split(":")
                         except AttributeError as e:
                             value_desc = "hist"
-                            value_counter = 0
+                            value_counter_raw = item
                         else:
                             value_desc = item_list[0]
                             value_counter_raw = item_list[1]
@@ -563,6 +568,8 @@ class JobStatsParser:
                         try:
                             value_counter = int(value_counter_raw)
                         except ValueError:
+                            value_counter = value_counter_raw
+                        except TypeError:
                             value_counter = value_counter_raw
                         metrics_dict[metric].update({value_desc: value_counter})
 
@@ -605,6 +612,7 @@ class JobStatsParser:
         include_metrics = list(self.op_keys.values())
         timestamp_id = ["snapshot_time", "start_time", "elapsed_time"]
 
+        # job.keys() = dict_keys(['job_id', 'snapshot_time', 'start_time', 'elapsed_time', 'open', 'close', 'mknod', 'link', 'unlink', 'mkdir', 'rmdir', 'rename', 'getattr', 'setattr', 'getxattr', 'setxattr', 'statfs', 'sync', 'samedir_rename', 'parallel_rename_file', 'parallel_rename_dir', 'crossdir_rename', 'read', 'write', 'read_bytes', 'write_bytes', 'punch', 'migrate'])
         for key in job.keys():
             if key in timestamp_id:
                 if key in timestamp_dict[jobid]:
@@ -616,7 +624,15 @@ class JobStatsParser:
                 continue
             if job[key]['samples'] == 0:
                 continue
-            job2[key] = job2.get(key, 0) + job[key]['samples']
+            
+            if key == 'read_bytes' or key == 'write_bytes':
+                hist_counter = Counter(job[key]['hist'])
+                sumofjobs = job2.get(key, [0, Counter({})])
+                current = [job[key]['samples'], hist_counter]
+                job2[key] = list(map(add, sumofjobs, current))
+            else:
+                job2[key] = job2.get(key, 0) + job[key]['samples']
+
             job2['ops'] = job2.get('ops', 0) + job[key]['samples']
 
         job2['job_id'] = jobid
@@ -682,8 +698,11 @@ class JobStatsParser:
             op_name = key
             if self.args.fullname:
                 op_name = self.op_keys[op_name]
-
-            print(f'{op_name}: {job[val]}', end='')
+            
+            if key == "rb" or key == "wb":
+                print(f'{op_name}: {dict(job[val][1])}', end='')
+            else:
+                print(f'{op_name}: {job[val]}', end='')
             #print('%s: %d' % (opname, job[val]), end='')
             if first:
                 first = False
