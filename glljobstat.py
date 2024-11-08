@@ -128,8 +128,10 @@ class ArgParser: # pylint: disable=too-few-public-methods,too-many-instance-attr
                             help="""Chops the number of parallel data pasing tasks into a number
                             of chunks which it submits to the process pool as separate tasks
                             (default: 1)""")
-        parser.add_argument('-nh', '--nohist', dest='nohist', action='store_true',
-                            help='Disable read_bytes and write_bytes history')
+        parser.add_argument('-hi', '--hist', dest='enablehist', action='store_true',
+                            help="""Explicetly enable read_bytes & write_bytes histogram as long
+                            as it is not fully implemented into glljobstat.
+                            This might make glljobstat.py fail when used with other flgs!""")
         parser.add_argument('-v', '--verbose', dest='verb', action='store_true',
                             help='Show some debug and timing information')
 
@@ -1108,7 +1110,8 @@ class JobStatsParser:
         self.argparser.run()
         self.args = self.argparser.args
         
-        if self.args.nohist:
+        if not self.args.enablehist:
+            print("lala")
             self.op_keys.pop("rb")
             self.op_keys.pop("wb")
             self.op_keys_rev.pop("read_bytes")
