@@ -1111,7 +1111,6 @@ class JobStatsParser:
         self.args = self.argparser.args
         
         if not self.args.enablehist:
-            print("lala")
             self.op_keys.pop("rb")
             self.op_keys.pop("wb")
             self.op_keys_rev.pop("read_bytes")
