@@ -1,18 +1,18 @@
 # global-lustre-jobstats
-glljobstat.py is based on [lljobstat](https://review.whamcloud.com/c/fs/lustre-release/+/48888) with some enhencements!
+glljobstat.py is based on [lljobstat](https://review.whamcloud.com/c/fs/lustre-release/+/48888) with some enhancements!
 
 ## Enhancements:
-* Aggreate stats over multiple OSS/MDS via SSH in parallel (key and password auth supported)
+* Aggregate stats over multiple OSS/MDS via SSH in parallel (key and password auth supported)
 * Calculate the rate of each job between queries
 * Show sum of ops over all jobs
 * Show job ops in percentage to total ops
 * Keep track of highest ever ops in pickle file
 * Process returned strings to yaml like objects in parallel (3x faster)
-* Use "naive" parsing to get another 3x speed up over ymal CLoader
+* Use "naive" parsing to get another 3x speed up over yaml CLoader
 * Filter for certain job_ids
 * Filter out certain job_ids
 * Config file for SSH, OSS/MDS, filter and other settings
-* Configure job_id name leght for pretty printing
+* Configure job_id name length for pretty printing
 * Limit number of parallel SSH connections
 * Limit number of parallel data processing tasks
 
@@ -20,17 +20,21 @@ glljobstat.py is based on [lljobstat](https://review.whamcloud.com/c/fs/lustre-r
 ### Help
 ```
 # ./glljobstat.py --help
-usage: glljobstat.py [-h] [-c COUNT] [-i INTERVAL] [-n REPEATS]
-                     [--param PARAM] [-o] [-m] [-s SERVERS] [--fullname]
+usage: glljobstat.py [-h] [-cfg CONFIGFILE] [-c COUNT] [-i INTERVAL]
+                     [-n REPEATS] [--param PARAM] [--groupby GROUPBY]
+                     [--sortby SORTBY] [-o] [-m] [-s SERVERS] [--fullname]
                      [--no-fullname] [-f FILTER] [-fm] [-l JOBID_LENGTH] [-t]
-                     [-tr] [-trf TOTALRATEFILE] [-p] [-ht] [-nps NUM_PROC_SSH]
-                     [-npp NUM_PROC_DATA] [-ncs NUM_CHUNK_SSH]
-                     [-ncp NUM_CHUNK_DATA] [-v] [-d | -r]
+                     [-tr] [-minr MINRATE] [-trf TOTALRATEFILE] [-p] [-ht]
+                     [-nps NUM_PROC_SSH] [-npp NUM_PROC_DATA]
+                     [-ncs NUM_CHUNK_SSH] [-ncp NUM_CHUNK_DATA] [-hi] [-v]
+                     [-d | -r]
 
 List top jobs.
 
 optional arguments:
   -h, --help            show this help message and exit
+  -cfg CONFIGFILE, --configfile CONFIGFILE
+                        Full path to config file (default ~/.glljobstat.conf).
   -c COUNT, --count COUNT
                         the number of top jobs to be listed (default 5).
   -i INTERVAL, --interval INTERVAL
@@ -39,6 +43,10 @@ optional arguments:
   -n REPEATS, --repeats REPEATS
                         the times to repeat the parsing (default unlimited).
   --param PARAM         the param path to be checked (default *.*.job_stats).
+  --groupby GROUPBY     sort by user / group / host / host_short / job / proc
+                        according to jobid_name Lustre pattern (default none).
+  --sortby SORTBY       sort top_jobs by operation type (ops, open, close,
+                        rename...) (default ops).
   -o, --ost             check only OST job stats.
   -m, --mdt             check only MDT job stats.
   -s SERVERS, --servers SERVERS
@@ -50,10 +58,13 @@ optional arguments:
   -fm, --fmod           Modify the filter to only show job_ids that match the
                         filter instead of removing them
   -l JOBID_LENGTH, --length JOBID_LENGTH
-                        Set job_id filename lenght for pretty printing
+                        Set job_id filename length for pretty printing
   -t, --total           Show sum over all jobs for each operation
   -tr, --totalrate      Whenever -tr is is used, a persistent file will be
                         created and keep track of the highest rate ever
+  -minr MINRATE, --minrate MINRATE
+                        the minimal ops rate number a job needs to be shown in
+                        top jobs (default 1).
   -trf TOTALRATEFILE, --totalratefile TOTALRATEFILE
                         Path to a pickle file which will keep track of the
                         higest rate (default /root/.glljobstatdb.pickle)
@@ -61,10 +72,10 @@ optional arguments:
   -ht, --humantime      Show human readable time instead of timestamp
   -nps NUM_PROC_SSH, --num_proc_ssh NUM_PROC_SSH
                         Number of parallel SSH connections (default cpu count:
-                        20).
+                        24).
   -npp NUM_PROC_DATA, --num_proc_data NUM_PROC_DATA
                         Number of parallel data parsing tasks (default cpu
-                        count: 20).
+                        count: 24).
   -ncs NUM_CHUNK_SSH, --num_chunk_ssh NUM_CHUNK_SSH
                         Chops the number of parallel SSH jobs into a number of
                         chunks which it submits to the process pool as
@@ -73,6 +84,10 @@ optional arguments:
                         Chops the number of parallel data pasing tasks into a
                         number of chunks which it submits to the process pool
                         as separate tasks (default: 1)
+  -hi, --hist           Explicetly enable read_bytes & write_bytes histogram
+                        as long as it is not fully implemented into
+                        glljobstat. This might make glljobstat.py fail when
+                        used with other flgs!
   -v, --verbose         Show some debug and timing information
 
 Mutually exclusive options:
